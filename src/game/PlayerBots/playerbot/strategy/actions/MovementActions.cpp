@@ -1031,25 +1031,18 @@ void MovementAction::UpdateFlyingState(
 // Issues the final MovePoint or MovePath command to MotionMaster,
 // handling all three bot versions and the free-flying case.
 // ---------------------------------------------------------------
-void MovementAction::DispatchMovement(
-    MotionMaster& mm,
-    const WorldPosition& movePosition,
-    bool generatePath,
-    bool masterWalking)
+void MovementAction::DispatchMovement(MotionMaster& mm, const WorldPosition& movePosition, bool generatePath, bool masterWalking)
 {
     uint32 moveOptions = (masterWalking ? MOVE_WALK_MODE : MOVE_RUN_MODE) | (generatePath ? MOVE_PATHFINDING : 0);
-
-Movement::PointsArray path;
+    Movement::PointsArray path;
     if (GeneratePathAvoidingHazards(movePosition, generatePath, path))
     {
         WaitForReach(path);
     }
 
-    mm.MovePoint(movePosition.getMapId(),
-        movePosition.getX(),
-        movePosition.getY(),
-        movePosition.getZ(),
-        moveOptions);
+    mm.Clear(false);
+
+    mm.MovePoint(movePosition.getMapId(), movePosition.getX(), movePosition.getY(), movePosition.getZ(), moveOptions);
 }
 
 // ---------------------------------------------------------------
@@ -1133,6 +1126,26 @@ bool MovementAction::MoveTo2(uint32 mapId, float x, float y, float z, bool idle,
             mover->StopMoving();
 
         return false;
+    }
+
+    // Rubberbanding: if the bot is already moving toward a point, and the new destination is close to that point, don't recalculate the path yet.
+    if (mover == bot && !bot->IsStopped() && bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == POINT_MOTION_TYPE && lastMove.lastMoveShort && lastMove.lastMoveShort.getMapId() == bot->GetMapId())
+    {
+        float destX, destY, destZ;
+        bot->GetMotionMaster()->GetDestination(destX, destY, destZ);
+
+        WorldPosition activeDestination(bot->GetMapId(), destX, destY, destZ, 0.0f);
+
+        if (activeDestination.distance(lastMove.lastMoveShort) < 5.0f)
+        {
+            float remaining = startPosition.distance(activeDestination);
+
+            if (remaining > 10.0f)
+            {
+                WaitForReach(remaining - 10.0f);
+                return true;
+            }
+        }
     }
 
     WorldPosition movePosition;

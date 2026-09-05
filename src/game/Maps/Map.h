@@ -774,6 +774,7 @@ class Map : public GridRefManager<NGridType>
         uint32 m_lastMapUpdate = 0;
         uint32 m_lastPlayerLeftTime = 0;
         uint32 m_lastPlayersUpdate;
+        uint32 m_lastRealPlayersUpdate;
         uint32 m_inactivePlayersSkippedUpdates = 0;
         uint32 m_lastCellsUpdate;
 

@@ -130,8 +130,7 @@ Map::Map(uint32 id, time_t expiry, uint32 InstanceId)
       m_createTime(time(nullptr)), m_gridExpiry(expiry), m_terrainData(sTerrainMgr.LoadTerrain(id)),
       m_data(nullptr), m_scriptId(0), m_unloading(false), m_crashed(false),
       m_processingSendObjUpdates(false), m_processingUnitsRelocation(false),
-      m_updateFinished(false), m_updateDiffMod(0), m_gridActivationDistance(DEFAULT_VISIBILITY_DISTANCE),
-      m_lastPlayersUpdate(WorldTimer::getMSTime()), m_lastMapUpdate(WorldTimer::getMSTime()),
+      m_updateFinished(false), m_updateDiffMod(0), m_gridActivationDistance(DEFAULT_VISIBILITY_DISTANCE), m_lastPlayersUpdate(WorldTimer::getMSTime()), m_lastRealPlayersUpdate(WorldTimer::getMSTime()), m_lastMapUpdate(WorldTimer::getMSTime()),
       m_lastCellsUpdate(WorldTimer::getMSTime()), m_inactivePlayersSkippedUpdates(0),
       m_objUpdatesThreads(0), m_unitRelocationThreads(0), m_lastPlayerLeftTime(0),
       m_lastMvtSpellsUpdate(0), m_bonesCleanupTimer(0), m_uiScriptedEventsTimer(1000)
@@ -920,7 +919,10 @@ void Map::UpdateSessionsMovementAndSpellsIfNeeded()
 void Map::UpdatePlayers(bool updateBots)
 {
     uint32 now = WorldTimer::getMSTime();
-    uint32 diff = WorldTimer::getMSTimeDiff(m_lastPlayersUpdate, now);
+
+    uint32& lastPlayersUpdate = updateBots ? m_lastPlayersUpdate : m_lastRealPlayersUpdate;
+
+    uint32 diff = WorldTimer::getMSTimeDiff(lastPlayersUpdate, now);
 
     if (diff < sWorld.getConfig(CONFIG_UINT32_MAPUPDATE_UPDATE_PLAYERS_DIFF))
         return;
@@ -1016,7 +1018,7 @@ void Map::UpdatePlayers(bool updateBots)
         helper.UpdateRealTime(now, diff + plr->GetSkippedUpdateTime());
         plr->ResetSkippedUpdateTime();
     }
-    m_lastPlayersUpdate = now;
+    lastPlayersUpdate = now;
 }
 
 void Map::DoUpdate(uint32 maxDiff)
