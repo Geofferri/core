@@ -130,6 +130,13 @@ namespace Movement
                 path.ExcludeSteepSlopes();
             path.setUseStrightPath(options & MOVE_STRAIGHT_PATH);
             path.calculate(dest.x, dest.y, dest.z, options & MOVE_FORCE_DESTINATION);
+
+            if ((options & MOVE_EXCLUDE_STEEP_SLOPES) && (path.getPathType() & PATHFIND_NOPATH))
+            {
+                SetStop();
+                return;
+            }
+
             Move(&path);
         }
         else

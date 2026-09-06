@@ -142,11 +142,13 @@ dtPolyRef PathInfo::FindWalkPoly(dtNavMeshQuery const* query, float const* point
     return polyRef;
 }
 
-dtPolyRef PathInfo::getPolyByLocation(float const* point, float *distance, uint32 allowedFlags)
+dtPolyRef PathInfo::getPolyByLocation(float const* point, float* distance, uint32 allowedFlags)
 {
     float closestPoint[VERTEX_SIZE] = {0.0f, 0.0f, 0.0f};
     dtQueryFilter filter;
     filter.setIncludeFlags(m_filter.getIncludeFlags() | allowedFlags);
+    filter.setExcludeFlags(m_filter.getExcludeFlags() & ~allowedFlags);
+
     dtPolyRef polyRef = FindWalkPoly(m_navMeshQuery, point, filter, closestPoint);
     if (polyRef != INVALID_POLYREF)
     {
