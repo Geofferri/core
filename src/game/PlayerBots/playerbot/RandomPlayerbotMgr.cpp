@@ -3704,7 +3704,7 @@ void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)
         horde[i] = 0;
     }
 
-    std::map<uint8, int> perRace, perClass;
+    std::map<uint8, int> perRace, perClass, allianceClass, hordeClass;
     for (uint8 race = RACE_HUMAN; race < MAX_RACES; ++race)
     {
         perRace[race] = 0;
@@ -3712,21 +3712,34 @@ void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)
     for (uint8 cls = CLASS_WARRIOR; cls < MAX_CLASSES; ++cls)
     {
         perClass[cls] = 0;
+        allianceClass[cls] = 0;
+        hordeClass[cls] = 0;
     }
+
+    uint32 allianceTotal = 0;
+    uint32 hordeTotal = 0;
 
     uint32 dps = 0, heal = 0, tank = 0, active = 0, update = 0, randomize = 0, teleport = 0, changeStrategy = 0, dead = 0, combat = 0, revive = 0, taxi = 0, moving = 0, mounted = 0, afk = 0;
     int stateCount[(uint8)TravelState::MAX_TRAVEL_STATE + 1] = { 0 };
     std::vector<std::pair<Quest const*, int32>> questCount;
 
-    ForEachPlayerbot([this, &dps, &heal, &tank, &active, &update, &randomize, &teleport, &changeStrategy, &dead, &combat, &revive, &taxi, &moving, &mounted, &afk, &alliance, &horde, &perRace, &perClass, &stateCount, &questCount](Player* bot)
+    ForEachPlayerbot([this, &dps, &heal, &tank, &active, &update, &randomize, &teleport, &changeStrategy, &dead, &combat, &revive, &taxi, &moving, &mounted, &afk, &alliance, &horde, &perRace, &perClass, &allianceClass, &hordeClass, &allianceTotal, &hordeTotal, &stateCount, &questCount](Player* bot)
     {
-        if (IsAlliance(bot->GetRace()))
-            alliance[bot->GetLevel() / 10]++;
-        else
-            horde[bot->GetLevel() / 10]++;
+            if (IsAlliance(bot->GetRace()))
+            {
+                alliance[bot->GetLevel() / 10]++;
+                allianceClass[bot->GetClass()]++;
+                allianceTotal++;
+            }
+            else
+            {
+                horde[bot->GetLevel() / 10]++;
+                hordeClass[bot->GetClass()]++;
+                hordeTotal++;
+            }
 
-        perRace[bot->GetRace()]++;
-        perClass[bot->GetClass()]++;
+            perRace[bot->GetRace()]++;
+            perClass[bot->GetClass()]++;
 
         if (bot->GetPlayerbotAI()->AllowActivity())
             active++;
@@ -3855,18 +3868,32 @@ void RandomPlayerbotMgr::PrintStats(uint32 requesterGuid)
         }
     }
 
-    ss.str(""); ss << "Bots class:";
+    ss.str("");
+    ss << "Bots class:";
     sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s", ss.str().c_str());
-    if (requester) { requester->GetSession()->SendAreaTriggerMessage("%s", ss.str().c_str()); }
+    if (requester)
+    {
+        requester->GetSession()->SendAreaTriggerMessage("%s", ss.str().c_str());
+    }
 
     for (uint8 cls = CLASS_WARRIOR; cls < MAX_CLASSES; ++cls)
     {
-        if (perClass[cls])
-        {
-            ss.str(""); ss << "    " << ChatHelper::formatClass(cls) << ": " << perClass[cls];
-            sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s", ss.str().c_str());
-            if (requester) { requester->GetSession()->SendAreaTriggerMessage("%s", ss.str().c_str()); }
-        }
+        if (!perClass[cls])
+            continue;
+
+        double alliancePercent = allianceTotal ? (static_cast<double>(allianceClass[cls]) / static_cast<double>(allianceTotal)) * 100.0 : 0.0;
+
+        double hordePercent = hordeTotal ? (static_cast<double>(hordeClass[cls]) / static_cast<double>(hordeTotal)) * 100.0 : 0.0;
+
+        ss.str("");
+        ss << "    " << ChatHelper::formatClass(cls) << ": " << perClass[cls] << " total"
+           << " | Alliance: " << allianceClass[cls] << " (" << std::fixed << std::setprecision(1) << alliancePercent << "%)"
+           << " | Horde: " << hordeClass[cls] << " (" << std::fixed << std::setprecision(1) << hordePercent << "%)";
+
+        sLog.Out(LOG_BASIC, LOG_LVL_MINIMAL, "%s", ss.str().c_str());
+
+        if (requester)
+            requester->GetSession()->SendAreaTriggerMessage("%s", ss.str().c_str());
     }
 
     ss.str(""); ss << "Bots role:";
