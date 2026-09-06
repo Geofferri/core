@@ -181,6 +181,10 @@ void ChaseMovementGenerator<T>::_setTargetLocation(T &owner)
     Movement::MoveSplineInit init(owner, "ChaseMovementGenerator<T>::_setTargetLocation");
     PathFinder path(&owner);
     path.SetTransport(transport);
+
+    if (owner.IsPlayer())
+        path.ExcludeSteepSlopes();
+
     path.calculate(x, y, z, false);
 
     PathType pathType = path.getPathType();
@@ -638,13 +642,23 @@ void FollowMovementGenerator<T>::_setTargetLocation(T &owner)
             i_target->GetSafePosition(x, y, z);
 
     PathFinder path(&owner);
-
-    // allow pets following their master to cheat while generating paths
     Movement::MoveSplineInit init(owner, "FollowMovementGenerator<T>::_setTargetLocation");
     path.SetTransport(transport);
-    path.calculate(x, y, z, true);
+
+    if (owner.IsPlayer())
+        path.ExcludeSteepSlopes();
+
+    path.calculate(x, y, z, !owner.IsPlayer());
 
     PathType pathType = path.getPathType();
+
+    if (owner.IsPlayer() && (pathType & PATHFIND_NOPATH))
+    {
+        m_bReachable = false;
+        m_bRecalculateTravel = false;
+        return;
+    }
+
     m_bReachable = pathType & (PATHFIND_NORMAL | PATHFIND_DEST_FORCED);
 
     if (!m_bReachable && !!(pathType & PATHFIND_INCOMPLETE) && owner.HasUnitState(UNIT_STATE_ALLOW_INCOMPLETE_PATH))

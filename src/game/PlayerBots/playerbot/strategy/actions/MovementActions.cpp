@@ -723,6 +723,10 @@ bool MovementAction::ResolveMovePath(
     if (outMovePath.empty() && outMovePosition.distance(startPosition) > maxDist)
     {
         PathFinder pathfinder(mover);
+
+        if (mover && mover->IsPlayer())
+            pathfinder.ExcludeSteepSlopes();
+
         pathfinder.calculate(outMovePosition.getX(), outMovePosition.getY(), outMovePosition.getZ(), false);
         const PointsArray& points = pathfinder.getPath();
         outMovePath.addPath(startPosition.fromPointsArray(points));
