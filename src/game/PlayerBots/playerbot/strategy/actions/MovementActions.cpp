@@ -1037,7 +1037,7 @@ void MovementAction::DispatchMovement(
     bool generatePath,
     bool masterWalking)
 {
-    uint32 moveOptions = (masterWalking ? MOVE_WALK_MODE : MOVE_RUN_MODE) | (generatePath ? MOVE_PATHFINDING : 0);
+    uint32 moveOptions = (masterWalking ? MOVE_WALK_MODE : MOVE_RUN_MODE) | (generatePath ? (MOVE_PATHFINDING | MOVE_EXCLUDE_STEEP_SLOPES) : 0);
 
 Movement::PointsArray path;
     if (GeneratePathAvoidingHazards(movePosition, generatePath, path))
