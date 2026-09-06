@@ -8758,5 +8758,5 @@ bool PlayerbotAI::IsAvQuester() const
     if (bot->GetLevel() < 51 || bot->GetLevel() > 59)
         return false;
 
-    return (bot->GetGUIDLow() % 5) <= 4;
+    return (bot->GetGUIDLow() % 5) == 0;
 }

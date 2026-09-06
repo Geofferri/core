@@ -344,29 +344,29 @@ bool BGTactics::SelectAvObjectiveAlliance(WorldLocation& objectiveLocation)
     }
 
     // Galv
-    if (!supporter && !bg->IsActiveEvent(BG_AV_NodeEventCaptainDead_A, 0))
+    if (!bg->IsActiveEvent(BG_AV_NodeEventCaptainDead_H, 0))
     {
-        if (Creature* pGalvangar = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(BG_AV_CAPTAIN_H, 0)))
+        Creature* pGalvangar = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(BG_AV_CAPTAIN_H, 0));
+
+        bool captainEngaged = pGalvangar && pGalvangar->GetHealth() > 0 && sServerFacade.IsInCombat(pGalvangar);
+
+        if (!supporter || captainEngaged)
         {
-            if (pGalvangar->GetHealth() > 0)
+            if (WorldLocation icebloodGarrison; sRandomPlayerbotMgr.GetNamedLocation("AV_ICEBLOOD_GARRISON_WAITING_ALLIANCE", icebloodGarrison))
             {
-                if (WorldLocation icebloodGarrison; sRandomPlayerbotMgr.GetNamedLocation("AV_ICEBLOOD_GARRISON_WAITING_ALLIANCE", icebloodGarrison))
+                objectiveLocation = icebloodGarrison;
+
+                if (pGalvangar && pGalvangar->GetHealth() > 0)
                 {
-                    uint32 attackCount = getDefendersCount(Position(icebloodGarrison.x, icebloodGarrison.y, icebloodGarrison.z, icebloodGarrison.o), 30.0f, true);
+                    uint32 attackCount = getDefendersCount(Position(icebloodGarrison.x, icebloodGarrison.y, icebloodGarrison.z, icebloodGarrison.o), 60.0f, true);
 
-                    bool captainEngaged = sServerFacade.IsInCombat(pGalvangar);
-
-                    if (attackCount < 5 && !captainEngaged)
-                    {
-                        objectiveLocation = icebloodGarrison;
-                    }
-                    else
+                    if (attackCount >= 5 || captainEngaged)
                     {
                         objectiveLocation = WorldLocation(pGalvangar->GetMapId(), pGalvangar->GetPositionX(), pGalvangar->GetPositionY(), pGalvangar->GetPositionZ(), pGalvangar->GetOrientation());
                     }
-
-                    return true;
                 }
+
+                return true;
             }
         }
     }
@@ -517,29 +517,29 @@ bool BGTactics::SelectAvObjectiveHorde(WorldLocation& objectiveLocation)
     }
 
     // Balinda
-    if (!supporter && !bg->IsActiveEvent(BG_AV_NodeEventCaptainDead_H, 0))
+    if (!bg->IsActiveEvent(BG_AV_NodeEventCaptainDead_A, 0))
     {
-        if (Creature* pBalinda = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(BG_AV_CAPTAIN_A, 0)))
+        Creature* pGalvangar = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(BG_AV_CAPTAIN_A, 0));
+
+        bool captainEngaged = pGalvangar && pGalvangar->GetHealth() > 0 && sServerFacade.IsInCombat(pGalvangar);
+
+        if (!supporter || captainEngaged)
         {
-            if (pBalinda->GetHealth() > 0)
+            if (WorldLocation icebloodGarrison; sRandomPlayerbotMgr.GetNamedLocation("AV_STONEHEART_OUTPOST_WAITING_HORDE", icebloodGarrison))
             {
-                if (WorldLocation stoneheartOutpost; sRandomPlayerbotMgr.GetNamedLocation("AV_STONEHEART_OUTPOST_WAITING_HORDE", stoneheartOutpost))
+                objectiveLocation = icebloodGarrison;
+
+                if (pGalvangar && pGalvangar->GetHealth() > 0)
                 {
-                    uint32 attackCount = getDefendersCount(Position(stoneheartOutpost.x, stoneheartOutpost.y, stoneheartOutpost.z, stoneheartOutpost.o), 30.0f, true);
+                    uint32 attackCount = getDefendersCount(Position(icebloodGarrison.x, icebloodGarrison.y, icebloodGarrison.z, icebloodGarrison.o), 60.0f, true);
 
-                    bool captainEngaged = sServerFacade.IsInCombat(pBalinda);
-
-                    if (attackCount < 5 && !captainEngaged)
+                    if (attackCount >= 5 || captainEngaged)
                     {
-                        objectiveLocation = stoneheartOutpost;
+                        objectiveLocation = WorldLocation(pGalvangar->GetMapId(), pGalvangar->GetPositionX(), pGalvangar->GetPositionY(), pGalvangar->GetPositionZ(), pGalvangar->GetOrientation());
                     }
-                    else
-                    {
-                        objectiveLocation = WorldLocation(pBalinda->GetMapId(), pBalinda->GetPositionX(), pBalinda->GetPositionY(), pBalinda->GetPositionZ(), pBalinda->GetOrientation());
-                    }
-
-                    return true;
                 }
+
+                return true;
             }
         }
     }
@@ -806,7 +806,7 @@ bool BGTactics::IsAvQuester()
     if (bot->GetLevel() < 51 || bot->GetLevel() > 59)
         return false;
 
-    return (bot->GetGUIDLow() % 5) <= 4;
+    return (bot->GetGUIDLow() % 5) == 0;
 }
 
 bool BGTactics::SelectAvQuesterObjective(WorldLocation& objectiveLocation)

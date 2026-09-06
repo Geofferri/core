@@ -5,6 +5,7 @@
 #include "BattleGround.h"
 #include "BattleGroundMgr.h"
 #include "BattleGroundTactics.h"
+#include "BattleGroundAV.h"
 #include "float.h"
 #ifdef MANGOSBOT_TWO
 #include "Vehicle.h"
@@ -2952,24 +2953,65 @@ if (getName() == "check objective")
             }
         }
 
-        if (bg->GetTypeID() == BATTLEGROUND_AV && pos.isSet())
+        if (bg->GetTypeID() == BATTLEGROUND_AV && pos.isSet() && !ai->IsAvQuester())
         {
-            WorldLocation waitingLocation;
+            bool strifeTime = bg->GetStartTime() < (uint32)(10 * MINUTE * IN_MILLISECONDS);
+            uint32 role = context->GetValue<uint32>("bg role")->Get();
+            bool supporter = role < (uint32)(strifeTime ? 4 : 2);
+
+            uint32 captainDeadEvent = bot->GetTeam() == ALLIANCE ? BG_AV_NodeEventCaptainDead_H : BG_AV_NodeEventCaptainDead_A;
+
+            uint32 captainEvent = bot->GetTeam() == ALLIANCE ? BG_AV_CAPTAIN_H : BG_AV_CAPTAIN_A;
 
             char const* waitingName = bot->GetTeam() == ALLIANCE ? "AV_ICEBLOOD_GARRISON_WAITING_ALLIANCE" : "AV_STONEHEART_OUTPOST_WAITING_HORDE";
 
-            if (sRandomPlayerbotMgr.GetNamedLocation(waitingName, waitingLocation))
+            Creature* captain = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(captainEvent, 0));
+
+            bool captainEngaged = captain && captain->GetHealth() > 0 && sServerFacade.IsInCombat(captain);
+
+            if ((!supporter || captainEngaged) && !bg->IsActiveEvent(captainDeadEvent, 0))
             {
-                float dx = pos.x - waitingLocation.x;
-                float dy = pos.y - waitingLocation.y;
-                float dz = pos.z - waitingLocation.z;
+                WorldLocation waitingLocation;
 
-                if ((dx * dx + dy * dy + dz * dz) < 4.0f)
+                if (sRandomPlayerbotMgr.GetNamedLocation(waitingName, waitingLocation))
                 {
-                    pos.Reset();
-                    posMap["bg objective"] = pos;
+                    float waitDx = pos.x - waitingLocation.x;
+                    float waitDy = pos.y - waitingLocation.y;
+                    float waitDz = pos.z - waitingLocation.z;
 
-                    return selectObjective(true);
+                    bool objectiveIsWaiting = (waitDx * waitDx + waitDy * waitDy + waitDz * waitDz) < 25.0f;
+
+                    bool objectiveIsCaptain = false;
+
+                    if (captain && captain->GetHealth() > 0)
+                    {
+                        float captainDx = pos.x - captain->GetPositionX();
+                        float captainDy = pos.y - captain->GetPositionY();
+                        float captainDz = pos.z - captain->GetPositionZ();
+
+                        objectiveIsCaptain = (captainDx * captainDx + captainDy * captainDy + captainDz * captainDz) < 25.0f;
+                    }
+
+                    if (!objectiveIsWaiting && !objectiveIsCaptain)
+                    {
+                        pos.Reset();
+                        posMap["bg objective"] = pos;
+
+                        return selectObjective(true);
+                    }
+
+                    if (objectiveIsWaiting && captain && captain->GetHealth() > 0)
+                    {
+                        uint32 attackCount = getDefendersCount(Position(waitingLocation.x, waitingLocation.y, waitingLocation.z, waitingLocation.o), 30.0f, true);
+
+                        if (attackCount >= 5 || captainEngaged)
+                        {
+                            pos.Reset();
+                            posMap["bg objective"] = pos;
+
+                            return selectObjective(true);
+                        }
+                    }
                 }
             }
         }
@@ -4545,40 +4587,52 @@ bool BGTactics::moveToObjective()
 
     if (bgType == BATTLEGROUND_AV && ai->IsAvQuester())
     {
-        WorldLocation desiredObjective;
+        bool refreshObjective = !pos.isSet();
 
-        bool hasDesiredObjective = SelectAvWorldBossTurnInObjective(desiredObjective);
-
-        if (!hasDesiredObjective)
-            hasDesiredObjective = SelectAvQuesterObjective(desiredObjective);
-
-        if (!hasDesiredObjective)
+        if (!refreshObjective)
         {
-            if (pos.isSet())
+            float dx = bot->GetPositionX() - pos.x;
+            float dy = bot->GetPositionY() - pos.y;
+            float dz = bot->GetPositionZ() - pos.z;
+
+            float distanceSq = dx * dx + dy * dy + dz * dz;
+
+            refreshObjective = distanceSq <= 64.0f; // 8 yards
+        }
+
+        if (refreshObjective)
+        {
+            WorldLocation desiredObjective;
+
+            bool hasDesiredObjective = SelectAvWorldBossTurnInObjective(desiredObjective);
+
+            if (!hasDesiredObjective)
+                hasDesiredObjective = SelectAvQuesterObjective(desiredObjective);
+
+            if (hasDesiredObjective)
             {
-                pos.Reset();
-                posMap["bg objective"] = pos;
+                bool objectiveChanged = !pos.isSet();
+
+                if (!objectiveChanged)
+                {
+                    float dx = pos.x - desiredObjective.x;
+                    float dy = pos.y - desiredObjective.y;
+                    float dz = pos.z - desiredObjective.z;
+
+                    objectiveChanged = (dx * dx + dy * dy + dz * dz) > 100.0f;
+                }
+
+                if (objectiveChanged)
+                {
+                    pos.Set(desiredObjective.x, desiredObjective.y, desiredObjective.z, desiredObjective.mapId);
+
+                    posMap["bg objective"] = pos;
+                }
             }
-
-            return false;
-        }
-
-        bool objectiveChanged = !pos.isSet();
-
-        if (!objectiveChanged)
-        {
-            float dx = pos.x - desiredObjective.x;
-            float dy = pos.y - desiredObjective.y;
-            float dz = pos.z - desiredObjective.z;
-
-            objectiveChanged = (dx * dx + dy * dy + dz * dz) > 100.0f;
-        }
-
-        if (objectiveChanged)
-        {
-            pos.Set(desiredObjective.x, desiredObjective.y, desiredObjective.z, bot->GetMapId());
-
-            posMap["bg objective"] = pos;
+            else if (!pos.isSet())
+            {
+                return false;
+            }
         }
 
         if (IsAvQuesterArmorerObjective(pos) && HandleAvQuesterArmorer())
@@ -4885,6 +4939,30 @@ bool BGTactics::startNewPathBegin(std::vector<BattleBotPath*> const& vPaths)
         return false;
 #endif
 
+    ai::PositionEntry objective = context->GetValue<ai::PositionMap&>("position")->Get()["bg objective"];
+
+    bool allowOwnMinePath = false;
+
+    if (bgType == BATTLEGROUND_AV && ai->IsAvQuester() && objective.isSet())
+    {
+        if (bot->GetTeam() == ALLIANCE)
+        {
+            // Irontooth Mine.
+            float dx = objective.x - 881.273f;
+            float dy = objective.y - (-442.002f);
+
+            allowOwnMinePath = (dx * dx + dy * dy) < (100.0f * 100.0f);
+        }
+        else
+        {
+            // Coldtooth Mine.
+            float dx = objective.x - (-853.671f);
+            float dy = objective.y - (-91.427f);
+
+            allowOwnMinePath = (dx * dx + dy * dy) < (100.0f * 100.0f);
+        }
+    }
+
     struct AvailablePath
     {
         AvailablePath(BattleBotPath* pPath_, bool reverse_) : pPath(pPath_), reverse(reverse_) {}
@@ -4901,10 +4979,15 @@ bool BGTactics::startNewPathBegin(std::vector<BattleBotPath*> const& vPaths)
         }
 
         // skip mine paths of own faction
-        if (bot->GetTeam() == ALLIANCE && std::find(vPaths_AllyMine.begin(), vPaths_AllyMine.end(), pPath) != vPaths_AllyMine.end())
+        if (!allowOwnMinePath && bot->GetTeam() == ALLIANCE && std::find(vPaths_AllyMine.begin(), vPaths_AllyMine.end(), pPath) != vPaths_AllyMine.end())
+        {
             continue;
-        if (bot->GetTeam() == HORDE && std::find(vPaths_HordeMine.begin(), vPaths_HordeMine.end(), pPath) != vPaths_HordeMine.end())
+        }
+
+        if (!allowOwnMinePath && bot->GetTeam() == HORDE && std::find(vPaths_HordeMine.begin(), vPaths_HordeMine.end(), pPath) != vPaths_HordeMine.end())
+        {
             continue;
+        }
 
         BattleBotWaypoint* pStart = &((*pPath)[0]);
         if (sqrt(bot->GetDistance(pStart->x, pStart->y, pStart->z)) < INTERACTION_DISTANCE)
@@ -4922,8 +5005,46 @@ bool BGTactics::startNewPathBegin(std::vector<BattleBotPath*> const& vPaths)
     if (availablePaths.empty())
         return false;
 
-    uint32 randomPath = urand(0, availablePaths.size() - 1);
-    AvailablePath const* chosenPath = &availablePaths[randomPath];
+    AvailablePath const* chosenPath = nullptr;
+
+    if (bgType == BATTLEGROUND_AV && ai->IsAvQuester())
+    {
+        ai::PositionEntry objective = context->GetValue<ai::PositionMap&>("position")->Get()["bg objective"];
+
+        if (!objective.isSet())
+            return false;
+
+        float bestDistance = FLT_MAX;
+
+        for (AvailablePath const& path : availablePaths)
+        {
+            BattleBotWaypoint* destination = nullptr;
+
+            if (path.reverse)
+                destination = &((*path.pPath)[0]);
+            else
+                destination = &((*path.pPath)[path.pPath->size() - 1]);
+
+            float dx = destination->x - objective.x;
+            float dy = destination->y - objective.y;
+
+            float distance = dx * dx + dy * dy;
+
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                chosenPath = &path;
+            }
+        }
+    }
+    else
+    {
+        uint32 randomPath = urand(0, availablePaths.size() - 1);
+        chosenPath = &availablePaths[randomPath];
+    }
+
+    if (!chosenPath)
+        return false;
 
     BattleBotPath* currentPath = chosenPath->pPath;
     bool reverse = chosenPath->reverse;
@@ -4952,6 +5073,30 @@ bool BGTactics::startNewPathFree(std::vector<BattleBotPath*> const& vPaths)
     uint32 closestPoint = 0;
     float closestDistance = FLT_MAX;
 
+    ai::PositionEntry objective = context->GetValue<ai::PositionMap&>("position")->Get()["bg objective"];
+
+    bool allowOwnMinePath = false;
+
+    if (bgType == BATTLEGROUND_AV && ai->IsAvQuester() && objective.isSet())
+    {
+        if (bot->GetTeam() == ALLIANCE)
+        {
+            // Irontooth Mine.
+            float dx = objective.x - 881.273f;
+            float dy = objective.y - (-442.002f);
+
+            allowOwnMinePath = (dx * dx + dy * dy) < (100.0f * 100.0f);
+        }
+        else
+        {
+            // Coldtooth Mine.
+            float dx = objective.x - (-853.671f);
+            float dy = objective.y - (-91.427f);
+
+            allowOwnMinePath = (dx * dx + dy * dy) < (100.0f * 100.0f);
+        }
+    }
+
         for (const auto& pPath : vPaths)
     {
         if (bgType == BATTLEGROUND_AV && ai->IsAvQuester() && IsAvQuesterForbiddenPath(pPath))
@@ -4960,10 +5105,15 @@ bool BGTactics::startNewPathFree(std::vector<BattleBotPath*> const& vPaths)
         }
 
         // skip mine paths of own faction
-        if (bot->GetTeam() == ALLIANCE && std::find(vPaths_AllyMine.begin(), vPaths_AllyMine.end(), pPath) != vPaths_AllyMine.end())
+        if (!allowOwnMinePath && bot->GetTeam() == ALLIANCE && std::find(vPaths_AllyMine.begin(), vPaths_AllyMine.end(), pPath) != vPaths_AllyMine.end())
+        {
             continue;
-        if (bot->GetTeam() == HORDE && std::find(vPaths_HordeMine.begin(), vPaths_HordeMine.end(), pPath) != vPaths_HordeMine.end())
+        }
+
+        if (!allowOwnMinePath && bot->GetTeam() == HORDE && std::find(vPaths_HordeMine.begin(), vPaths_HordeMine.end(), pPath) != vPaths_HordeMine.end())
+        {
             continue;
+        }
 
         for (uint32 i = 0; i < pPath->size(); i++)
         {
@@ -5001,6 +5151,9 @@ bool BGTactics::startNewPathFree(std::vector<BattleBotPath*> const& vPaths)
 
     if (reverse && std::find(vPaths_NoReverseAllowed.begin(), vPaths_NoReverseAllowed.end(), pClosestPath) != vPaths_NoReverseAllowed.end())
     {
+        if (bgType == BATTLEGROUND_AV && ai->IsAvQuester())
+            return false;
+
         reverse = false;
     }
 

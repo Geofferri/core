@@ -18,20 +18,13 @@ bool DpsAssistAction::isUseful()
 
 bool AttackAnythingAction::isUseful()
 {
-    if (!ai->AllowActivity(GRIND_ACTIVITY)) // Bot not allowed to be active
-        return false;
-
-    if (ai->IsAvQuester())
+    if (bot->InBattleGround() && bot->GetBattleGroundTypeId() == BATTLEGROUND_AV && !ai->IsAvQuester())
     {
-        uint32 questId = bot->GetTeam() == ALLIANCE ? BG_AV_QUEST_A_RIDER_TAME : BG_AV_QUEST_H_RIDER_TAME;
-
-        uint32 tameItem = bot->GetTeam() == ALLIANCE ? 17689 : 17626;
-
-        if (bot->GetQuestStatus(questId) == QUEST_STATUS_INCOMPLETE && !bot->HasItemCount(tameItem, 1))
-        {
-            return false;
-        }
+        return false;
     }
+
+    if (!ai->AllowActivity(GRIND_ACTIVITY))
+        return false;
 
     if (!AI_VALUE(bool, "can move around"))
         return false;

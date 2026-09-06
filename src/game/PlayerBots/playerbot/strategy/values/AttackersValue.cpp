@@ -3,6 +3,7 @@
 #include "AttackersValue.h"
 #include "PossibleTargetsValue.h"
 #include "EnemyPlayerValue.h"
+#include "BattleGroundAV.h"
 
 using namespace ai;
 using namespace MaNGOS;
@@ -25,6 +26,34 @@ std::list<ObjectGuid> AttackersValue::Calculate()
     // lost control, e.g. BG ended
     if (bot->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_CONFUSED))
         return result;
+
+    if (bot->InBattleGround() && bot->GetBattleGroundTypeId() == BATTLEGROUND_AV && !ai->IsAvQuester())
+    {
+        BattleGround* bg = bot->GetBattleGround();
+
+        if (bg)
+        {
+            uint32 captainSlot = bot->GetTeam() == ALLIANCE ? BG_AV_CAPTAIN_H : BG_AV_CAPTAIN_A;
+
+            Creature* captain = bot->GetMap()->GetCreature(bg->GetSingleCreatureGuid(captainSlot, 0));
+
+            if (captain && captain->IsInWorld() && captain->GetHealth() > 0 && sServerFacade.IsInCombat(captain))
+            {
+                bool committed = sServerFacade.GetDistance2d(bot, captain) <= 60.0f || captain->GetThreatManager().getThreat(bot) > 0.0f || captain->GetVictim() == bot || bot->GetVictim() == captain;
+
+                if (!committed)
+                {
+                    if (Pet* pet = bot->GetPet())
+                    {
+                        committed = captain->GetThreatManager().getThreat(pet) > 0.0f || captain->GetVictim() == pet || pet->GetVictim() == captain;
+                    }
+                }
+
+                if (committed)
+                    return {captain->GetObjectGuid()};
+            }
+        }
+    }
 
     if (ai->HasStrategy("focus rti targets", BotState::BOT_STATE_COMBAT))
     {

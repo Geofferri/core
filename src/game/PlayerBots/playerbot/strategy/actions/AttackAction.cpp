@@ -6,14 +6,57 @@
 #include "playerbot/LootObjectStack.h"
 #include "playerbot/ServerFacade.h"
 #include "playerbot/strategy/generic/CombatStrategy.h"
+#include "BattleGroundAV.h"
 
 using namespace ai;
+
+static bool IsAvCaptainFocusTarget(Player* bot, Unit* target)
+{
+    if (!bot || !target)
+        return false;
+
+    if (!bot->InBattleGround() || bot->GetBattleGroundTypeId() != BATTLEGROUND_AV)
+    {
+        return false;
+    }
+
+    BattleGround* bg = bot->GetBattleGround();
+    if (!bg)
+        return false;
+
+    // Alliance attacks Galvangar, Horde attacks Balinda.
+    uint32 captainEvent = bot->GetTeam() == ALLIANCE ? BG_AV_CAPTAIN_H : BG_AV_CAPTAIN_A;
+
+    ObjectGuid captainGuid = bg->GetSingleCreatureGuid(captainEvent, 0);
+
+    if (!captainGuid || target->GetObjectGuid() != captainGuid)
+    {
+        return false;
+    }
+
+    if (!target->IsInWorld() || sServerFacade.UnitIsDead(target) || !sServerFacade.IsInCombat(target))
+    {
+        return false;
+    }
+
+    if (target->GetMapId() != bot->GetMapId())
+        return false;
+
+    return true;
+}
 
 bool AttackAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
-
     Unit* target = GetTarget();
+
+    Unit* currentTarget = AI_VALUE(Unit*, "current target");
+
+    if (currentTarget && currentTarget != target && IsAvCaptainFocusTarget(bot, currentTarget))
+    {
+        target = currentTarget;
+    }
+
     if (target && target->IsInWorld() && target->GetMapId() == bot->GetMapId())
     {
         return Attack(requester, target);
