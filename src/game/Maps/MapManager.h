@@ -33,38 +33,25 @@ class BattleGround;
 
 enum
 {
-    // Eastern Kingdoms - original coordinate partitions
-    MAP0_TOP_NORTH = 1,
-    MAP0_MIDDLE_NORTH = 2,
+    MAP0_TOP_NORTH      = 1,
+    MAP0_MIDDLE_NORTH   = 2,
     MAP0_IRONFORGE_AREA = 3,
-    MAP0_MIDDLE = 4,
-    MAP0_STORMWIND_AREA = 5,
-    MAP0_SOUTH = 6,
+    MAP0_MIDDLE         = 4,    // Burning stepps, Redridge monts, Blasted lands
+    MAP0_STORMWIND_AREA = 5,    // Stormwind, Elwynn forest, Redridge Mts
+    MAP0_SOUTH          = 6,    // Southern phase of the continent
 
-    // Eastern Kingdoms - extra zone partitions
-    MAP0_EASTERN_PLAGUELANDS = 7,
-    MAP0_HILLSBRAD = 8,
-    MAP0_WETLANDS = 9,
-    MAP0_STRANGLETHORN = 10,
+    MAP1_NORTH          = 11,   // Stonetalon, Ashenvale, Darkshore, Felwood, Moonglade, Winterspring, Azshara, Desolace
+    MAP1_DUROTAR        = 12,   // Durotar
+    MAP1_UPPER_MIDDLE   = 13,   // Mulgore, Barrens, Dustwallow Marsh
+    MAP1_LOWER_MIDDLE   = 14,   // Feralas, 1K needles
+    MAP1_VALLEY         = 15,   // Orc and Troll starting area
+    MAP1_ORGRIMMAR      = 16,   // Orgrimmar (on its own)
+    MAP1_SOUTH          = 17,   // Silithus, Un'goro and Tanaris
 
-    // Kalimdor - original coordinate partitions
-    MAP1_NORTH = 11,
-    MAP1_DUROTAR = 12,
-    MAP1_UPPER_MIDDLE = 13,
-    MAP1_LOWER_MIDDLE = 14,
-    MAP1_VALLEY = 15,
-    MAP1_ORGRIMMAR = 16,
-    MAP1_SOUTH = 17,
-
-    // Kalimdor - extra zone partitions
-    MAP1_NORTH_CENTRAL = 18,
-    MAP1_NORTH_EAST = 19,
-    MAP1_BARRENS = 20,
-
-    MAP0_FIRST = 1,
-    MAP0_LAST = 10,
-    MAP1_FIRST = 11,
-    MAP1_LAST = 20,
+    MAP0_FIRST          = 1,
+    MAP0_LAST           = 10,
+    MAP1_FIRST          = 11,
+    MAP1_LAST           = 20,
 };
 
 struct MapID
@@ -100,7 +87,7 @@ class MapManager : public MaNGOS::Singleton<MapManager, MaNGOS::ClassLevelLockab
     public:
         typedef std::map<MapID, Map* > MapMapType;
 
-        uint32 GetContinentInstanceId(uint32 mapId, float x, float y, bool* transitionArea = nullptr, uint32 zoneId = 0);
+        uint32 GetContinentInstanceId(uint32 mapId, float x, float y, bool* transitionArea = nullptr);
         Map* CreateMap(uint32, WorldObject const* obj);
         Map* CreateBgMap(uint32 mapid, BattleGround* bg);
         Map* CreateTestMap(uint32 mapid, bool instanced, float posX, float posY);
