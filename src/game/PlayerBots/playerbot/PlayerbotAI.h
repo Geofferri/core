@@ -372,7 +372,9 @@ public:
 	std::string HandleRemoteCommand(std::string command);
     void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
-	void HandleBotOutgoingPacket(const WorldPacket& packet);
+    void HandleBotOutgoingPacket(const WorldPacket& packet);
+    void ProcessBotOutgoingPackets();
+    size_t GetPendingBotOutgoingPacketCount();
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);
 	void HandleTeleportAck();
@@ -684,7 +686,6 @@ public:
 private:
     bool UpdateAIReaction(uint32 elapsed, bool minimal, bool isStunned);
     void UpdateFaceTarget(uint32 elapsed, bool minimal);
-    void ProcessBotOutgoingPackets();
     void HandleBotOutgoingPacketInternal(const WorldPacket& packet);
 
 protected:

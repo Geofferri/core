@@ -108,12 +108,11 @@ void PacketHandlingHelper::AddPacket(const WorldPacket& packet)
     if (packet.empty() && packet.GetOpcode() != MSG_RAID_READY_CHECK)
         return;
 
-    m_botPacketMutex.lock(); //We are going to add packets. Stop any new handling and add them.
+    if (handlers.find(packet.GetOpcode()) == handlers.end())
+        return;
 
-	if (handlers.find(packet.GetOpcode()) != handlers.end())
-        queue.push(WorldPacket(packet));
-
-    m_botPacketMutex.unlock();
+    std::lock_guard<std::mutex> lock(m_botPacketMutex);
+    queue.push(packet);
 }
 
 PlayerbotAI::PlayerbotAI() : PlayerbotAIBase(), bot(NULL), aiObjectContext(NULL),
@@ -1549,13 +1548,85 @@ void PlayerbotAI::ProcessBotOutgoingPackets()
     }
 }
 
+size_t PlayerbotAI::GetPendingBotOutgoingPacketCount()
+{
+    std::lock_guard<std::mutex> lock(m_pendingBotOutgoingPacketsMutex);
+    return m_pendingBotOutgoingPackets.size();
+}
+
 void PlayerbotAI::HandleBotOutgoingPacket(const WorldPacket& packet)
 {
-    if (packet.empty())
+    if (packet.empty() && packet.GetOpcode() != MSG_RAID_READY_CHECK)
         return;
 
-    std::lock_guard<std::mutex> lock(m_pendingBotOutgoingPacketsMutex);
-    m_pendingBotOutgoingPackets.push(packet);
+    switch (packet.GetOpcode())
+    {
+    case SMSG_EMOTE:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);
+
+            uint32 emoteId;
+            ObjectGuid source;
+            p >> emoteId >> source;
+
+            if (!source.IsPlayer())
+                return;
+
+            botOutgoingPacketHandlers.AddPacket(packet);
+            return;
+        }
+
+    case SMSG_SPELL_FAILURE:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);
+
+            ObjectGuid casterGuid;
+            p >> casterGuid.ReadAsPacked();
+
+            if (casterGuid != bot->GetObjectGuid())
+                return;
+
+            std::lock_guard<std::mutex> lock(m_pendingBotOutgoingPacketsMutex);
+            m_pendingBotOutgoingPackets.push(packet);
+            return;
+        }
+
+    case SMSG_SPELL_DELAYED:
+        {
+            WorldPacket p(packet);
+            p.rpos(0);
+
+            ObjectGuid casterGuid;
+            p >> casterGuid.ReadAsPacked();
+
+            if (casterGuid != bot->GetObjectGuid())
+                return;
+
+            std::lock_guard<std::mutex> lock(m_pendingBotOutgoingPacketsMutex);
+            m_pendingBotOutgoingPackets.push(packet);
+            return;
+        }
+
+    case SMSG_GROUP_INVITE:
+    case SMSG_MESSAGECHAT:
+#ifndef MANGOSBOT_ZERO
+    case SMSG_GM_MESSAGECHAT:
+#endif
+    case SMSG_MOVE_KNOCK_BACK:
+        {
+            std::lock_guard<std::mutex> lock(m_pendingBotOutgoingPacketsMutex);
+            m_pendingBotOutgoingPackets.push(packet);
+            return;
+        }
+
+    default:
+        {
+            botOutgoingPacketHandlers.AddPacket(packet);
+            return;
+        }
+    }
 }
 
 void PlayerbotAI::HandleBotOutgoingPacketInternal(const WorldPacket& packet)

@@ -1011,6 +1011,12 @@ void Map::UpdatePlayers(bool updateBots)
 
         if (!updateInactivePlayers && !forceFullBotUpdate && !playerNearby && !playerIsActive && !scheduledInactiveUpdate && !playerHasPendingItemUpdates)
         {
+            if (!plr->isRealPlayer())
+            {
+                if (PlayerbotAI* botAI = plr->GetPlayerbotAI())
+                    botAI->ProcessBotOutgoingPackets();
+            }
+
             plr->AddSkippedUpdateTime(diff);
             continue;
         }

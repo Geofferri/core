@@ -4585,12 +4585,16 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
         uint32 activeBots = 0;
         uint32 realPlayers = 0;
 
+        uint64 pendingPackets = 0;
+        uint32 packetQueueBots = 0;
+        size_t maxPendingPackets = 0;
+        std::string maxPendingPacketBot;
+
         float activityPercentage = -1.0f;
         uint32 targetMs = 0;
 
         double averageUpdateMs = 0.0;
         uint32 updateSamples = 0;
-
         double sessionsMs = 0.0;
         double playersMs = 0.0;
         double cellsMs = 0.0;
@@ -4604,6 +4608,11 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
     };
 
     std::vector<PartitionStats> partitions;
+
+    uint64 totalPendingPackets = 0;
+    uint32 totalPacketQueueBots = 0;
+    size_t maxPendingPackets = 0;
+    std::string maxPendingPacketBot;
 
     for (auto const& mapPair : sMapMgr.Maps())
     {
@@ -4661,11 +4670,33 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
             ++stats.zoneBots[zoneId];
 
             PlayerbotAI* botAI = player->GetPlayerbotAI();
-
-            if (botAI && botAI->IsActivityAllowedCached(ALL_ACTIVITY))
+            if (botAI)
             {
-                ++stats.activeBots;
-                ++stats.zoneActiveBots[zoneId];
+                size_t const pendingPackets = botAI->GetPendingBotOutgoingPacketCount();
+
+                ++stats.packetQueueBots;
+                stats.pendingPackets += pendingPackets;
+
+                ++totalPacketQueueBots;
+                totalPendingPackets += pendingPackets;
+
+                if (pendingPackets > stats.maxPendingPackets)
+                {
+                    stats.maxPendingPackets = pendingPackets;
+                    stats.maxPendingPacketBot = player->GetName();
+                }
+
+                if (pendingPackets > maxPendingPackets)
+                {
+                    maxPendingPackets = pendingPackets;
+                    maxPendingPacketBot = player->GetName();
+                }
+
+                if (botAI->IsActivityAllowedCached(ALL_ACTIVITY))
+                {
+                    ++stats.activeBots;
+                    ++stats.zoneActiveBots[zoneId];
+                }
             }
         }
 
@@ -4680,6 +4711,16 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
 
                   return left.instanceId < right.instanceId;
               });
+
+    double const averagePendingPackets = totalPacketQueueBots ? static_cast<double>(totalPendingPackets) / static_cast<double>(totalPacketQueueBots) : 0.0;
+
+    ss << "Pending bot outgoing packets:"
+       << " Total: " << totalPendingPackets << " | Avg/bot: " << std::fixed << std::setprecision(2) << averagePendingPackets << " | Max/bot: " << maxPendingPackets;
+
+    if (!maxPendingPacketBot.empty())
+        ss << " (" << maxPendingPacketBot << ")";
+
+    ss << "\n";
 
     for (uint32 continentId = 0; continentId <= 1; ++continentId)
     {
@@ -4831,6 +4872,19 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
                    << " | players2=" << stats.players2Ms << " ms"
 
                    << " | other=" << stats.otherMs << " ms\n";
+            }
+
+            if (stats.packetQueueBots)
+            {
+                double const averagePending = static_cast<double>(stats.pendingPackets) / static_cast<double>(stats.packetQueueBots);
+
+                ss << "    Pending packets:"
+                   << " total=" << stats.pendingPackets << " | avg/bot=" << std::fixed << std::setprecision(2) << averagePending << " | max/bot=" << stats.maxPendingPackets;
+
+                if (!stats.maxPendingPacketBot.empty())
+                    ss << " (" << stats.maxPendingPacketBot << ")";
+
+                ss << "\n";
             }
 
             std::vector<std::pair<uint32, uint32>> sortedZones(stats.zoneBots.begin(), stats.zoneBots.end());
