@@ -2631,7 +2631,22 @@ bool BGTactics::wsgRoofJump()
     bool atAllianceRoof = bot->GetPositionX() > 1465.f && bot->GetPositionZ() > 370.f;
     bool inCombat = bot->IsInCombat();
 
-    if (atHordeRoof && (!inCombat || (pos.z < 365.f && pos.x > 987.f)))
+    bool flagCarrierReturningHome = false;
+
+    if (bg->GetTypeID() == BATTLEGROUND_WS)
+    {
+        BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+        ObjectGuid teamFCGuid = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+        bool carryingFlag = !teamFCGuid.IsEmpty() && teamFCGuid == bot->GetObjectGuid();
+
+        bool ownFlagAtBase = ws->GetFlagState(bot->GetTeam()) == BG_WS_FLAG_STATE_ON_BASE;
+
+        flagCarrierReturningHome = carryingFlag && ownFlagAtBase;
+    }
+
+    if (atHordeRoof && (flagCarrierReturningHome || !inCombat || (pos.z < 365.f && pos.x > 987.f)))
     {
         // not at jump point
         if (bot->GetPositionX() > 933.f || bot->GetPositionY() > 1450.f)
@@ -2640,7 +2655,7 @@ bool BGTactics::wsgRoofJump()
             return MoveTo(bg->GetMapId(), WS_FLAG_HORDE_ROOF_JUMP_LOWER.x, WS_FLAG_HORDE_ROOF_JUMP_LOWER.y, WS_FLAG_HORDE_ROOF_JUMP_LOWER.z, false, false, true);
     }
 
-    if (atAllianceRoof && (!inCombat || (pos.z < 372.f && pos.x < 1465.f)))
+    if (atAllianceRoof && (flagCarrierReturningHome || !inCombat || (pos.z < 372.f && pos.x < 1465.f)))
     {
         // not at jump point
         if (bot->GetPositionX() < 1521.f || bot->GetPositionY() > 1467.f)
@@ -2649,7 +2664,7 @@ bool BGTactics::wsgRoofJump()
             return MoveTo(bg->GetMapId(), WS_FLAG_ALLIANCE_ROOF_JUMP_LOWER.x, WS_FLAG_ALLIANCE_ROOF_JUMP_LOWER.y, WS_FLAG_ALLIANCE_ROOF_JUMP_LOWER.z, false, false, true);
     }
 
-    if (atHordeSecondFloorJump && (!inCombat || (pos.z < 354.f && pos.x > 933.f)))
+    if (atHordeSecondFloorJump && (flagCarrierReturningHome || !inCombat || (pos.z < 354.f && pos.x > 933.f)))
     {
         // not at jump point
         if (bot->GetPositionY() > 1452.f)
@@ -2658,7 +2673,7 @@ bool BGTactics::wsgRoofJump()
             return MoveTo(bg->GetMapId(), WS_FLAG_HORDE_FLOOR_JUMP_LOWER.x, WS_FLAG_HORDE_FLOOR_JUMP_LOWER.y, WS_FLAG_HORDE_FLOOR_JUMP_LOWER.z, false, false, true);
     }
 
-    if (atAllianceSecondFloorJump && (!inCombat || (pos.z < 361.f && pos.x < 1421.f)))
+    if (atAllianceSecondFloorJump && (flagCarrierReturningHome || !inCombat || (pos.z < 361.f && pos.x < 1421.f)))
     {
         // not at jump point
         if (bot->GetPositionY() < 1468.f)
@@ -4681,20 +4696,45 @@ bool BGTactics::moveToObjective()
 
         ai::PositionEntry carrierObjective = posMap["wsg carrier objective"];
 
-        if (carryingFlag && !carrierObjective.isSet())
+        if (carryingFlag)
         {
-            ai->StopMoving();
+            bool ownFlagAtBase = ws->GetFlagState(bot->GetTeam()) == BG_WS_FLAG_STATE_ON_BASE;
 
-            pos.Reset();
-            posMap["bg objective"] = pos;
+            Position const& ownFlag = bot->GetTeam() == ALLIANCE ? WS_FLAG_POS_ALLIANCE : WS_FLAG_POS_HORDE;
 
-            if (!selectObjective(true))
-                return false;
+            bool carrierObjectiveIsOwnFlag = false;
 
-            pos = posMap["bg objective"];
+            if (carrierObjective.isSet())
+            {
+                float dx = carrierObjective.x - ownFlag.x;
+                float dy = carrierObjective.y - ownFlag.y;
+                float dz = carrierObjective.z - ownFlag.z;
+
+                carrierObjectiveIsOwnFlag = (dx * dx + dy * dy + dz * dz) < (15.0f * 15.0f);
+            }
+
+            bool refreshCarrierObjective = !carrierObjective.isSet() || (ownFlagAtBase && !carrierObjectiveIsOwnFlag) || (!ownFlagAtBase && carrierObjectiveIsOwnFlag);
+
+            if (refreshCarrierObjective)
+            {
+                ai->StopMoving();
+
+                pos.Reset();
+                posMap["bg objective"] = pos;
+
+                carrierObjective.Reset();
+                posMap["wsg carrier objective"] = carrierObjective;
+
+                if (!selectObjective(true))
+                    return false;
+
+                pos = posMap["bg objective"];
+
+                if (!pos.isSet())
+                    return false;
+            }
         }
-
-        else if (!carryingFlag && carrierObjective.isSet())
+        else if (carrierObjective.isSet())
         {
             ai->StopMoving();
 
