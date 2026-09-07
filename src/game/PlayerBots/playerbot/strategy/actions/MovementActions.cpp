@@ -747,6 +747,12 @@ bool MovementAction::ResolveMovePath(
             pathfinder.ExcludeSteepSlopes();
 
         pathfinder.calculate(outMovePosition.getX(), outMovePosition.getY(), outMovePosition.getZ(), false);
+
+        PathType const pathType = pathfinder.getPathType();
+
+        if (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH))
+            return false;
+
         const PointsArray& points = pathfinder.getPath();
         outMovePath.addPath(startPosition.fromPointsArray(points));
     }
@@ -909,6 +915,10 @@ void MovementAction::ClipMovePositionForAggro(
         return;
 
     PathFinder path(mover);
+
+    if (mover && mover->IsPlayer())
+        path.ExcludeSteepSlopes();
+
     path.calculate(movePosition.getX(), movePosition.getY(), movePosition.getZ(), false);
     const PointsArray& points = path.getPath();
 
@@ -3115,6 +3125,7 @@ bool MovementAction::GeneratePathAvoidingHazards(const WorldPosition& endPositio
         if (!hazards.empty())
         {
             PathFinder path(bot);
+            path.ExcludeSteepSlopes();
             path.calculate(endPosition.getX(), endPosition.getY(), endPosition.getZ(), false);
             Movement::PointsArray pathPoints((path).getPath());
             Movement::PointsArray collidingHazards;

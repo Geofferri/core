@@ -190,6 +190,13 @@ void ChaseMovementGenerator<T>::_setTargetLocation(T &owner)
     PathType pathType = path.getPathType();
     m_bReachable = pathType & (PATHFIND_NORMAL | PATHFIND_DEST_FORCED);
 
+    if (owner.IsPlayer() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
+    {
+        m_bReachable = false;
+        m_bRecalculateTravel = false;
+        return;
+    }
+
     if (pathType == PATHFIND_NOPATH)
         return;
 
@@ -652,7 +659,7 @@ void FollowMovementGenerator<T>::_setTargetLocation(T &owner)
 
     PathType pathType = path.getPathType();
 
-    if (owner.IsPlayer() && (pathType & PATHFIND_NOPATH))
+    if (owner.IsPlayer() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
     {
         m_bReachable = false;
         m_bRecalculateTravel = false;
