@@ -190,7 +190,7 @@ void ChaseMovementGenerator<T>::_setTargetLocation(T &owner)
     PathType pathType = path.getPathType();
     m_bReachable = pathType & (PATHFIND_NORMAL | PATHFIND_DEST_FORCED);
 
-    if (owner.IsPlayer() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
+    if (owner.IsPlayer() && !owner.IsInWater() && !i_target.getTarget()->IsInWater() && !owner.CanFly() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT)))
     {
         m_bReachable = false;
         m_bRecalculateTravel = false;
@@ -659,7 +659,7 @@ void FollowMovementGenerator<T>::_setTargetLocation(T &owner)
 
     PathType pathType = path.getPathType();
 
-    if (owner.IsPlayer() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH)))
+    if (owner.IsPlayer() && !owner.IsInWater() && !i_target.getTarget()->IsInWater() && !owner.CanFly() && (pathType & (PATHFIND_NOPATH | PATHFIND_NOT_USING_PATH | PATHFIND_SHORTCUT)))
     {
         m_bReachable = false;
         m_bRecalculateTravel = false;
