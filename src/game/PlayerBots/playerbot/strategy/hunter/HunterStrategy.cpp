@@ -105,6 +105,10 @@ void HunterStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         new NextAction("say::no ammo", ACTION_NORMAL),
         NULL)));
 
+        triggers.push_back(new TriggerNode(
+            "hunters pet dead",
+            NextAction::array(0, new NextAction("revive pet", ACTION_EMERGENCY + 1), NULL)));
+
     triggers.push_back(new TriggerNode(
         "no pet",
         NextAction::array(0, new NextAction("tame beast", ACTION_EMERGENCY), NULL)));

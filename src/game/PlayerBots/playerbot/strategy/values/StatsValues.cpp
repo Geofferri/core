@@ -1,4 +1,5 @@
 #include "Objects/Bag.h"
+#include "Objects/Pet.h"
 
 #include "playerbot/playerbot.h"
 #include "StatsValues.h"
@@ -26,25 +27,23 @@ bool IsDeadValue::Calculate()
 
 bool PetIsDeadValue::Calculate()
 {
-#ifdef MANGOSBOT_ZERO
-#ifdef MANGOS
-    bool petIsDead = false;
-    if (petIsDead)
-#endif
-#endif
-    if (!bot->GetPet())
-    {
-        uint32 ownerid = bot->GetGUIDLow();
-        auto result = CharacterDatabase.PQuery("SELECT id FROM character_pet WHERE owner_guid = '%u'", ownerid);
-        if (!result)
-            return false;
+    if (Pet* pet = bot->GetPet())
+        return sServerFacade.GetDeathState(pet) != ALIVE;
 
-        return true;
-    }
-    if (bot->GetPetGuid() && !bot->GetPet())
-        return true;
+    uint32 ownerId = bot->GetGUIDLow();
 
-    return bot->GetPet() && sServerFacade.GetDeathState(bot->GetPet()) != ALIVE;
+    auto result = CharacterDatabase.PQuery("SELECT `current_health` "
+                                           "FROM `character_pet` "
+                                           "WHERE `owner_guid` = '%u' "
+                                           "AND (`slot` = '%u' OR `slot` > '%u') "
+                                           "LIMIT 1",
+                                           ownerId, uint32(PET_SAVE_AS_CURRENT), uint32(PET_SAVE_LAST_STABLE_SLOT));
+
+    if (!result)
+        return false;
+
+    Field* fields = result->Fetch();
+    return fields[0].GetUInt32() == 0;
 }
 
 bool PetIsHappyValue::Calculate()

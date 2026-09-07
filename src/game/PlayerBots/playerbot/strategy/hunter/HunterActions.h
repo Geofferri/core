@@ -132,6 +132,8 @@ public:
     {
     public:
         CastCallPetAction(PlayerbotAI* ai) : CastBuffSpellAction(ai, "call pet") {}
+
+        bool isUseful() override { return !AI_VALUE(bool, "pet dead") && CastBuffSpellAction::isUseful(); }
     };
 
     class CastMendPetAction : public CastAuraSpellAction
