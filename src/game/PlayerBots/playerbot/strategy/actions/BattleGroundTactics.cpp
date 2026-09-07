@@ -5617,6 +5617,7 @@ bool BGTactics::useBuff()
         return false;
 
     BattleGroundTypeId bgType = bg->GetTypeID();
+
 #ifdef MANGOSBOT_TWO
     if (bgType == BATTLEGROUND_RB)
         bgType = bg->GetTypeID();
@@ -5627,13 +5628,17 @@ bool BGTactics::useBuff()
     if (closeObjects.empty())
         return false;
 
-    bool needRegen = bot->GetHealthPercent() < sPlayerbotAIConfig.mediumHealth || (AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.mediumMana);
+    bool lowHealth = bot->GetHealthPercent() < sPlayerbotAIConfig.mediumHealth;
+
+    bool lowMana = AI_VALUE2(bool, "has mana", "self target") && AI_VALUE2(uint8, "mana", "self target") < sPlayerbotAIConfig.mediumMana;
+
+    bool needRegen = lowHealth || (bgType != BATTLEGROUND_WS && lowMana);
+
 #ifdef MANGOSBOT_ZERO
     bool needSpeed = (bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG)) || !(teamFlagTaken() || flagTaken());
 #else
     bool needSpeed = (bgType != BATTLEGROUND_WS || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG) || bot->HasAura(EY_SPELL_NETHERSTORM_FLAG)) || !(teamFlagTaken() || flagTaken());
 #endif
-    bool foundBuff = false;
 
     for (std::list<ObjectGuid>::iterator i = closeObjects.begin(); i != closeObjects.end(); ++i)
     {
@@ -5644,32 +5649,46 @@ bool BGTactics::useBuff()
         if (!sServerFacade.isSpawned(go))
             continue;
 
-        // use speed buff only if close
-        if (sServerFacade.GetDistance2d(bot, go) > (go->GetEntry() == Buff_Entries[0] ? 20.0f : VISIBILITY_DISTANCE_SMALL))
-            continue;
+        float distance = sServerFacade.GetDistance2d(bot, go->GetPositionX(), go->GetPositionY());
 
-        if (needSpeed && go->GetEntry() == Buff_Entries[0])
-            foundBuff = true;
-
-        if (needRegen && go->GetEntry() == Buff_Entries[1])
-            foundBuff = true;
-
-        // do not move to Berserk buff if bot is healer or has flag
-#ifdef MANGOSBOT_ZERO
-        if (!(bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG)) && !ai->IsHeal(bot) && go->GetEntry() == Buff_Entries[2])
-#else
-        if (!(bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG) || bot->HasAura(EY_SPELL_NETHERSTORM_FLAG)) && !ai->IsHeal(bot) && go->GetEntry() == Buff_Entries[2])
-#endif
-            foundBuff = true;
-
-        if (foundBuff)
+        if (go->GetEntry() == Buff_Entries[0])
         {
-            //ostringstream out; out << "Moving to buff...";
-            //bot->Say(out.str().c_str(), LANG_UNIVERSAL);
+            if (!needSpeed || distance > 20.0f)
+                continue;
+
+            return MoveTo(go->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+        }
+
+        if (go->GetEntry() == Buff_Entries[1])
+        {
+            float regenRange = bgType == BATTLEGROUND_WS ? 15.0f : VISIBILITY_DISTANCE_SMALL;
+
+            if (!needRegen || distance > regenRange)
+                continue;
+
+            return MoveTo(go->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
+        }
+
+        if (go->GetEntry() == Buff_Entries[2])
+        {
+#ifdef MANGOSBOT_ZERO
+            bool carryingFlag = bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+#else
+            bool carryingFlag = bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG) || bot->HasAura(EY_SPELL_NETHERSTORM_FLAG);
+#endif
+
+            if (carryingFlag || ai->IsHeal(bot))
+                continue;
+
+            float berserkRange = bgType == BATTLEGROUND_WS ? 20.0f : VISIBILITY_DISTANCE_SMALL;
+
+            if (distance > berserkRange)
+                continue;
 
             return MoveTo(go->GetMapId(), go->GetPositionX(), go->GetPositionY(), go->GetPositionZ());
         }
     }
+
     return false;
 }
 
