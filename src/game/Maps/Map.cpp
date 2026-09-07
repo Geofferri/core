@@ -946,6 +946,9 @@ void Map::UpdatePlayers(bool updateBots)
         if (!plr || !plr->IsInWorld())
             continue;
 
+        if (updateBots && IsContinent() && plr->isRealPlayer())
+            continue;
+
         if (!updateBots && !plr->isRealPlayer())
             continue;
 
@@ -1001,7 +1004,7 @@ void Map::UpdatePlayers(bool updateBots)
             }
         }
 
-        bool const playerIsActive = plr->IsInCombat() || plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS) || plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SELF_ITEMS) || plr->HasScheduledEvent() || needsBgQueueUpdate || botActivityActive;
+        bool const playerIsActive = plr->IsTaxiFlying() || plr->IsInCombat() || plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SPELLS) || plr->GetSession()->HasRecentPacket(PACKET_PROCESS_SELF_ITEMS) || plr->HasScheduledEvent() || needsBgQueueUpdate || botActivityActive;
 
         bool const scheduledInactiveUpdate = (plr->GetGUIDLow() % updateCycle) == updateSlot;
 
