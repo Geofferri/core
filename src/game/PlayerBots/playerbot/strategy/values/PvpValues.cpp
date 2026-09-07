@@ -166,26 +166,34 @@ Unit* FlagCarrierValue::Calculate()
     {
         if (ai->GetBot()->GetBattleGroundTypeId() == BattleGroundTypeId::BATTLEGROUND_WS)
         {
-            BattleGroundWS *bg = (BattleGroundWS*)ai->GetBot()->GetBattleGround();
+            BattleGroundWS* bg = (BattleGroundWS*)ai->GetBot()->GetBattleGround();
 
             if (!bg)
                 return nullptr;
 
-            if ((!sameTeam && bot->GetTeam() == HORDE || (sameTeam && bot->GetTeam() == ALLIANCE)) && false /* GetFlagCarrierGuid not in vmangos */)
-                carrier = bg->GetBgMap()->GetPlayer(ObjectGuid());
+            ObjectGuid carrierGuid;
 
-            if ((!sameTeam && bot->GetTeam() == ALLIANCE || (sameTeam && bot->GetTeam() == HORDE)) && false /* GetFlagCarrierGuid not in vmangos */)
-                carrier = bg->GetBgMap()->GetPlayer(ObjectGuid());
-
-            if (carrier)
+            if (sameTeam)
             {
-                if (ignoreRange || bot->IsWithinDistInMap(carrier, sPlayerbotAIConfig.sightDistance))
-                {
-                    return carrier;
-                }
-                else
-                    return nullptr;
+                carrierGuid = bot->GetTeam() == ALLIANCE ? bg->GetHordeFlagPickerGuid() : bg->GetAllianceFlagPickerGuid();
             }
+            else
+            {
+                carrierGuid = bot->GetTeam() == ALLIANCE ? bg->GetAllianceFlagPickerGuid() : bg->GetHordeFlagPickerGuid();
+            }
+
+            if (carrierGuid.IsEmpty())
+                return nullptr;
+
+            carrier = bg->GetBgMap()->GetPlayer(carrierGuid);
+
+            if (!carrier)
+                return nullptr;
+
+            if (ignoreRange || bot->IsWithinDistInMap(carrier, sPlayerbotAIConfig.sightDistance))
+                return carrier;
+
+            return nullptr;
         }
 #ifndef MANGOSBOT_ZERO
         if (ai->GetBot()->GetBattleGroundTypeId() == BattleGroundTypeId::BATTLEGROUND_EY)

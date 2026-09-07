@@ -157,7 +157,7 @@ bool PlayerHasFlag::IsActive()
             if (!bg)
                 return false;
 
-            if (bot->GetObjectGuid() == ObjectGuid() || bot->GetObjectGuid() == ObjectGuid())
+            if (bot->GetObjectGuid() == bg->GetAllianceFlagPickerGuid() || bot->GetObjectGuid() == bg->GetHordeFlagPickerGuid())
             {
                 return true;
             }

@@ -5,6 +5,7 @@
 #include "BattleGround.h"
 #include "BattleGroundMgr.h"
 #include "BattleGroundTactics.h"
+#include "BattleGroundWS.h"
 #include "BattleGroundAV.h"
 #include "float.h"
 #ifdef MANGOSBOT_TWO
@@ -29,6 +30,10 @@ Position const WS_FLAG_HIDE_ALLIANCE_2 = { 1540.286f, 1476.026f, 352.692f, 2.91f
 Position const WS_FLAG_HIDE_ALLIANCE_3 = { 1495.807f, 1466.774f, 352.350f, 1.50f };
 Position const WS_FLAG_HIDE_ALLIANCE_4 = { 1531.f, 1463.774f, 362.850f, 1.50f };
 Position const WS_FLAG_HIDE_ALLIANCE_5 = { 1476.f, 1488.f, 373.850f, 1.50f };
+Position const WS_DEFEND_POS_ALLIANCE_1 = {1534.5f, 1477.5f, 352.4f, 0.0f};
+Position const WS_DEFEND_POS_ALLIANCE_2 = {1534.5f, 1486.0f, 352.4f, 0.0f};
+Position const WS_DEFEND_POS_HORDE_1 = {921.0f, 1429.5f, 346.2f, 0.0f};
+Position const WS_DEFEND_POS_HORDE_2 = {921.0f, 1438.0f, 346.2f, 0.0f};
 Position const WS_FLAG_HORDE_ROOF_JUMP_UPPER = { 931.f, 1448.f, 367.850f, 1.50f };
 Position const WS_FLAG_HORDE_ROOF_JUMP_LOWER = { 927.f, 1442.f, 345.850f, 1.50f };
 Position const WS_FLAG_ALLIANCE_ROOF_JUMP_UPPER = { 1523.f, 1467.f, 373.f, 1.50f };
@@ -2739,12 +2744,45 @@ bool BGTactics::Execute(Event& event)
 
     std::vector<BattleBotPath*> const* vPaths;
     std::vector<uint32> const* vFlagIds;
-
     BattleGroundTypeId bgType = bg->GetTypeID();
+
 #ifdef MANGOSBOT_TWO
     if (bgType == BATTLEGROUND_RB)
         bgType = bot->GetBattleGround()->GetTypeId(true);
 #endif
+
+    if (bgType == BATTLEGROUND_WS)
+    {
+        uint32 botIndex = 0;
+        bool foundBot = false;
+
+        for (const auto& bgPlayer : bg->GetPlayers())
+        {
+            if (bgPlayer.second.playerTeam != bot->GetTeam())
+                continue;
+
+            Player* player = bg->GetBgMap()->GetPlayer(bgPlayer.first);
+            if (!player)
+                continue;
+
+            if (!player->GetPlayerbotAI())
+                continue;
+
+            if (player == bot)
+            {
+                foundBot = true;
+                break;
+            }
+
+            ++botIndex;
+        }
+
+        if (foundBot)
+        {
+            uint32 role = botIndex > 9 ? 9 : botIndex;
+            context->GetValue<uint32>("bg role")->Set(role);
+        }
+    }
 
     switch (bgType)
     {
@@ -3028,28 +3066,42 @@ if (getName() == "check objective")
          */
         if (bg->GetTypeID() == BATTLEGROUND_WS && pos.isSet())
         {
+            uint32 role = context->GetValue<uint32>("bg role")->Get();
+
+            bool carryingFlag = bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+
+            bool objectiveIsOwnFlag = false;
+            bool objectiveIsEnemyFlag = false;
+
+            if (bot->GetTeam() == ALLIANCE)
+            {
+                objectiveIsOwnFlag = pos.x == WS_FLAG_POS_ALLIANCE.x && pos.y == WS_FLAG_POS_ALLIANCE.y;
+
+                objectiveIsEnemyFlag = pos.x == WS_FLAG_POS_HORDE.x && pos.y == WS_FLAG_POS_HORDE.y;
+            }
+            else
+            {
+                objectiveIsOwnFlag = pos.x == WS_FLAG_POS_HORDE.x && pos.y == WS_FLAG_POS_HORDE.y;
+
+                objectiveIsEnemyFlag = pos.x == WS_FLAG_POS_ALLIANCE.x && pos.y == WS_FLAG_POS_ALLIANCE.y;
+            }
+
+            if (!carryingFlag && role >= 2 && objectiveIsOwnFlag)
+            {
+                pos.Reset();
+                posMap["bg objective"] = pos;
+
+                return selectObjective(true);
+            }
+
             Unit* teamFC = AI_VALUE(Unit*, "team flag carrier");
 
-            if (teamFC && !bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) && !bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG))
+            if (teamFC && !carryingFlag && objectiveIsEnemyFlag)
             {
-                bool attackingEnemyFlag = false;
+                pos.Reset();
+                posMap["bg objective"] = pos;
 
-                if (bot->GetTeam() == ALLIANCE)
-                {
-                    attackingEnemyFlag = pos.x == WS_FLAG_POS_HORDE.x && pos.y == WS_FLAG_POS_HORDE.y;
-                }
-                else
-                {
-                    attackingEnemyFlag = pos.x == WS_FLAG_POS_ALLIANCE.x && pos.y == WS_FLAG_POS_ALLIANCE.y;
-                }
-
-                if (attackingEnemyFlag)
-                {
-                    pos.Reset();
-                    posMap["bg objective"] = pos;
-
-                    return selectObjective(true);
-                }
+                return selectObjective(true);
             }
         }
 
@@ -3211,7 +3263,7 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
         {
             uint32 role = context->GetValue<uint32>("bg role")->Get();
 
-            if (teamFC && role < 3)
+            if (teamFC && role >= 5)
             {
                 if (bot->GetDistance(teamFC->GetPositionX(), teamFC->GetPositionY(), teamFC->GetPositionZ()) > 75.0f)
                 {
@@ -3344,31 +3396,32 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
                 return true;
             }
 
-            /*
-             * STATE 1:
-             *
-             * Enemy has our flag.
-             *
-             * Defense remains defense.
-             * Midfield actively chases the enemy FC.
-             * Assault continues attacking the enemy flag.
-             */
             if (enemyFC)
             {
-                /*
-                 * DEFENSE
-                 *
-                 * Roles 0-1 stay near our flag/base.
-                 */
                 if (role < 2)
                 {
-                    if (bot->GetTeam() == ALLIANCE)
+                    Position const& ownFlag = bot->GetTeam() == ALLIANCE ? WS_FLAG_POS_ALLIANCE : WS_FLAG_POS_HORDE;
+
+                    uint32 defenders = getDefendersCount(Position(ownFlag.x, ownFlag.y, ownFlag.z, ownFlag.o), 12.0f, true);
+
+                    if (defenders < 2)
                     {
-                        pos.Set(WS_FLAG_POS_ALLIANCE.x, WS_FLAG_POS_ALLIANCE.y, WS_FLAG_POS_ALLIANCE.z, bot->GetMapId());
+                        Position const& defendPos = bot->GetTeam() == ALLIANCE ? (defenders == 0 ? WS_DEFEND_POS_ALLIANCE_1 : WS_DEFEND_POS_ALLIANCE_2) : (defenders == 0 ? WS_DEFEND_POS_HORDE_1 : WS_DEFEND_POS_HORDE_2);
+
+                        pos.Set(defendPos.x, defendPos.y, defendPos.z, bot->GetMapId());
                     }
                     else
                     {
-                        pos.Set(WS_FLAG_POS_HORDE.x, WS_FLAG_POS_HORDE.y, WS_FLAG_POS_HORDE.z, bot->GetMapId());
+                        context->GetValue<uint32>("bg role")->Set(5);
+
+                        if (bot->GetTeam() == ALLIANCE)
+                        {
+                            pos.Set(WS_FLAG_POS_HORDE.x, WS_FLAG_POS_HORDE.y, WS_FLAG_POS_HORDE.z, bot->GetMapId());
+                        }
+                        else
+                        {
+                            pos.Set(WS_FLAG_POS_ALLIANCE.x, WS_FLAG_POS_ALLIANCE.y, WS_FLAG_POS_ALLIANCE.z, bot->GetMapId());
+                        }
                     }
                 }
 
@@ -3389,13 +3442,23 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
                  */
                 else
                 {
-                    if (bot->GetTeam() == ALLIANCE)
+                    if (teamFC)
                     {
-                        pos.Set(WS_FLAG_POS_HORDE.x, WS_FLAG_POS_HORDE.y, WS_FLAG_POS_HORDE.z, bot->GetMapId());
+                        pos.Set(teamFC->GetPositionX(), teamFC->GetPositionY(), teamFC->GetPositionZ(), teamFC->GetMapId());
+
+                        if (sServerFacade.GetDistance2d(bot, teamFC) < 50.0f)
+                            Follow(teamFC);
                     }
                     else
                     {
-                        pos.Set(WS_FLAG_POS_ALLIANCE.x, WS_FLAG_POS_ALLIANCE.y, WS_FLAG_POS_ALLIANCE.z, bot->GetMapId());
+                        if (bot->GetTeam() == ALLIANCE)
+                        {
+                            pos.Set(WS_FLAG_POS_HORDE.x, WS_FLAG_POS_HORDE.y, WS_FLAG_POS_HORDE.z, bot->GetMapId());
+                        }
+                        else
+                        {
+                            pos.Set(WS_FLAG_POS_ALLIANCE.x, WS_FLAG_POS_ALLIANCE.y, WS_FLAG_POS_ALLIANCE.z, bot->GetMapId());
+                        }
                     }
                 }
             }
@@ -4571,11 +4634,12 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
 
 bool BGTactics::moveToObjective()
 {
-    BattleGround *bg = bot->GetBattleGround();
+    BattleGround* bg = bot->GetBattleGround();
     if (!bg)
         return false;
 
     BattleGroundTypeId bgType = bg->GetTypeID();
+
 #ifdef MANGOSBOT_TWO
     if (bgType == BATTLEGROUND_RB)
         bgType = bg->GetTypeID();
@@ -4584,6 +4648,44 @@ bool BGTactics::moveToObjective()
     ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
 
     ai::PositionEntry pos = posMap["bg objective"];
+
+    if (bgType == BATTLEGROUND_WS && pos.isSet())
+    {
+        BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+        ObjectGuid enemyFlagPicker;
+
+        if (bot->GetTeam() == ALLIANCE)
+            enemyFlagPicker = ws->GetHordeFlagPickerGuid();
+        else
+            enemyFlagPicker = ws->GetAllianceFlagPickerGuid();
+
+        bool isCurrentFlagCarrier = !enemyFlagPicker.IsEmpty() && enemyFlagPicker == bot->GetObjectGuid();
+
+        Position const& ownFlag = bot->GetTeam() == ALLIANCE ? WS_FLAG_POS_ALLIANCE : WS_FLAG_POS_HORDE;
+
+        float dx = pos.x - ownFlag.x;
+        float dy = pos.y - ownFlag.y;
+        float dz = pos.z - ownFlag.z;
+
+        bool objectiveIsOwnFlag = (dx * dx + dy * dy + dz * dz) < 25.0f;
+
+        uint32 role = context->GetValue<uint32>("bg role")->Get();
+
+        if (role >= 2 && objectiveIsOwnFlag && !isCurrentFlagCarrier)
+        {
+            pos.Reset();
+            posMap["bg objective"] = pos;
+
+            if (!selectObjective(true))
+                return false;
+
+            pos = posMap["bg objective"];
+
+            if (!pos.isSet())
+                return false;
+        }
+    }
 
     if (bgType == BATTLEGROUND_AV && ai->IsAvQuester())
     {
@@ -5389,20 +5491,13 @@ std::vector<uint32>::const_iterator f = find(vFlagIds.begin(), vFlagIds.end(), g
             {
                 if (atBase)
                 {
-                    if (bot->GetTeam() == HORDE)
-                    {
-                        WorldPacket data(CMSG_AREATRIGGER);
-                        data << uint32(3670);
-                        bot->GetSession()->HandleAreaTriggerOpcode(MakeTypedPacket<WorldPackets::Misc::AreaTrigger>(data));
-                    }
-                    else
-                    {
-                        WorldPacket data(CMSG_AREATRIGGER);
-                        data << uint32(3669);
-                        bot->GetSession()->HandleAreaTriggerOpcode(MakeTypedPacket<WorldPackets::Misc::AreaTrigger>(data));
-                    }
-                    //ostringstream out; out << "Capturing flag!";
-                    //bot->Say(out.str().c_str(), LANG_UNIVERSAL);
+                    uint32 triggerId = bot->GetTeam() == HORDE ? AREATRIGGER_HORDE_FLAG_SPAWN : AREATRIGGER_ALLIANCE_FLAG_SPAWN;
+
+                    WorldPacket data(CMSG_AREATRIGGER);
+                    data << triggerId;
+                    bot->GetSession()->HandleAreaTriggerOpcode(MakeTypedPacket<WorldPackets::Misc::AreaTrigger>(data));
+
+                    resetObjective();
                     return true;
                 }
 
@@ -5480,20 +5575,26 @@ std::vector<uint32>::const_iterator f = find(vFlagIds.begin(), vFlagIds.end(), g
 
 bool BGTactics::flagTaken()
 {
-    BattleGroundWS* bg = (BattleGroundWS *)bot->GetBattleGround();
-    if (!bg)
+    BattleGround* battleground = bot->GetBattleGround();
+    if (!battleground || battleground->GetTypeID() != BATTLEGROUND_WS)
         return false;
 
-    return false; /* GetFlagCarrierGuid not in vmangos */
+    BattleGroundWS* bg = static_cast<BattleGroundWS*>(battleground);
+
+    Team enemyTeam = bot->GetTeam() == ALLIANCE ? HORDE : ALLIANCE;
+
+    return bg->GetFlagState(enemyTeam) != BG_WS_FLAG_STATE_ON_BASE;
 }
 
 bool BGTactics::teamFlagTaken()
 {
-    BattleGroundWS* bg = (BattleGroundWS *)bot->GetBattleGround();
-    if (!bg)
+    BattleGround* battleground = bot->GetBattleGround();
+    if (!battleground || battleground->GetTypeID() != BATTLEGROUND_WS)
         return false;
 
-    return false; /* GetFlagCarrierGuid not in vmangos */
+    BattleGroundWS* bg = static_cast<BattleGroundWS*>(battleground);
+
+    return bg->GetFlagState(bot->GetTeam()) != BG_WS_FLAG_STATE_ON_BASE;
 }
 
 bool BGTactics::protectFC()
