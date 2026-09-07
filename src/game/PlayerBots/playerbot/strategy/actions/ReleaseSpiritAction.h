@@ -164,22 +164,10 @@ namespace ai
             travelTarget->SetStatus(TravelStatus::TRAVEL_STATUS_EXPIRED);
             travelTarget->SetExpireIn(1000);
 
-            PlayerInfo const* defaultPlayerInfo = sObjectMgr.GetPlayerInfo(bot->GetRace(), bot->GetClass());
-            if (defaultPlayerInfo)
-            {
-                sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Repop: Teleporting bot #%d %s:%d <%s> to spawn", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
-                //teleport bot to spawn
-                bot->TeleportTo(defaultPlayerInfo->mapId, defaultPlayerInfo->positionX, defaultPlayerInfo->positionY, defaultPlayerInfo->positionZ, defaultPlayerInfo->orientation);
-                if (bot->isRealPlayer())
-                    bot->SendHeartBeat();
-            }
-            else
-            {
-                sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Repop: Teleporting bot #%d %s:%d <%s> to homebind", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
-                //teleport bot to homebind
-                bot->TeleportToHomebind();
-                bot->SendHeartBeat();
-            }
+            sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "Repop: Teleporting bot #%d %s:%d <%s> to homebind", bot->GetGUIDLow(), bot->GetTeam() == ALLIANCE ? "A" : "H", bot->GetLevel(), bot->GetName());
+
+            bot->TeleportToHomebind();
+            bot->SendHeartBeat();
 
             sPlayerbotAIConfig.logEvent(ai, "RepopAction");
 
