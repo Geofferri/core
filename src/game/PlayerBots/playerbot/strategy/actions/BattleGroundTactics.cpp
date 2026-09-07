@@ -2875,7 +2875,11 @@ bool BGTactics::Execute(Event& event)
             Unit* teamFC = AI_VALUE(Unit*, "team flag carrier");
             Unit* enemyFC = AI_VALUE(Unit*, "enemy flag carrier");
 
-            bool carryingFlag = bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+            BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+            ObjectGuid carriedFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+            bool carryingFlag = (!carriedFlagPicker.IsEmpty() && carriedFlagPicker == bot->GetObjectGuid()) || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
 
             if (role >= 2 && role < 5 && !enemyFC && !carryingFlag)
             {
@@ -3355,15 +3359,13 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
             Unit* teamFC = AI_VALUE(Unit*, "team flag carrier");
             Unit* enemyFC = AI_VALUE(Unit*, "enemy flag carrier");
 
-            /*
-             * FLAG CARRIER
-             *
-             * If we are carrying the flag, our objective is ALWAYS our own
-             * flag/base.
-             *
-             * Do not preserve an old enemy-flag objective.
-             */
-            if (bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG))
+            BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+            ObjectGuid carriedFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+            bool carryingFlag = (!carriedFlagPicker.IsEmpty() && carriedFlagPicker == bot->GetObjectGuid()) || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+
+            if (carryingFlag)
             {
                 if (bot->GetTeam() == ALLIANCE)
                 {
@@ -5512,8 +5514,9 @@ std::vector<uint32>::const_iterator f = find(vFlagIds.begin(), vFlagIds.end(), g
                 WorldPackets::Misc::GameObjectUse packet;
                 packet.guid = go->GetObjectGuid();
                 bot->GetSession()->HandleGameObjectUseOpcode(packet);
-
                 resetObjective();
+                selectObjective(true);
+
                 return true;
             }
             else
