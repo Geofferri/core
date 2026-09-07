@@ -374,6 +374,7 @@ public:
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
     void HandleBotOutgoingPacket(const WorldPacket& packet);
     void ProcessBotOutgoingPackets();
+    bool TryMinimalMove();
     size_t GetPendingBotOutgoingPacketCount();
     void HandleMasterIncomingPacket(const WorldPacket& packet);
     void HandleMasterOutgoingPacket(const WorldPacket& packet);

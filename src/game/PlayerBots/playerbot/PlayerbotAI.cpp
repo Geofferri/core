@@ -2132,7 +2132,7 @@ void PlayerbotAI::DoNextAction(bool min)
 
     if (minimal)
     {
-        if (!MovementAction::MinimalMove(this) && !bot->IsAFK() && !bot->InBattleGround() && !HasRealPlayerMaster())
+        if (!TryMinimalMove() && !bot->IsAFK() && !bot->InBattleGround() && !HasRealPlayerMaster())
             bot->ToggleAFK();
 
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.passiveDelay);
@@ -8787,4 +8787,12 @@ bool PlayerbotAI::IsAvQuester() const
         return false;
 
     return (bot->GetGUIDLow() % 5) == 0;
+}
+
+bool PlayerbotAI::TryMinimalMove()
+{
+    if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported())
+        return false;
+
+    return MovementAction::MinimalMove(this);
 }

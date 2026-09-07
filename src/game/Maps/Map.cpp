@@ -1014,7 +1014,10 @@ void Map::UpdatePlayers(bool updateBots)
             if (!plr->isRealPlayer())
             {
                 if (PlayerbotAI* botAI = plr->GetPlayerbotAI())
+                {
                     botAI->ProcessBotOutgoingPackets();
+                    botAI->TryMinimalMove();
+                }
             }
 
             plr->AddSkippedUpdateTime(diff);
