@@ -2879,7 +2879,7 @@ bool BGTactics::Execute(Event& event)
 
             ObjectGuid carriedFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
 
-            bool carryingFlag = (!carriedFlagPicker.IsEmpty() && carriedFlagPicker == bot->GetObjectGuid()) || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+            bool carryingFlag = !carriedFlagPicker.IsEmpty() && carriedFlagPicker == bot->GetObjectGuid();
 
             if (role >= 2 && role < 5 && !enemyFC && !carryingFlag)
             {
@@ -2973,6 +2973,17 @@ if (getName() == "check objective")
 
         if (!bg)
             return false;
+
+        if (bg->GetTypeID() == BATTLEGROUND_WS && !bot->IsAlive())
+        {
+            pos.Reset();
+            posMap["bg objective"] = pos;
+
+            RESET_AI_VALUE(Unit*, "team flag carrier");
+            RESET_AI_VALUE(Unit*, "enemy flag carrier");
+
+            return false;
+        }
 
         if (bg->GetTypeID() == BATTLEGROUND_AV && pos.isSet() && HasAvMineSuppliesToTurnIn())
         {
@@ -3356,14 +3367,22 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
         {
             uint32 role = context->GetValue<uint32>("bg role")->Get();
 
-            Unit* teamFC = AI_VALUE(Unit*, "team flag carrier");
-            Unit* enemyFC = AI_VALUE(Unit*, "enemy flag carrier");
-
             BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
 
-            ObjectGuid carriedFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+            ObjectGuid teamFCGuid = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
 
-            bool carryingFlag = (!carriedFlagPicker.IsEmpty() && carriedFlagPicker == bot->GetObjectGuid()) || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+            ObjectGuid enemyFCGuid = bot->GetTeam() == ALLIANCE ? ws->GetAllianceFlagPickerGuid() : ws->GetHordeFlagPickerGuid();
+
+            Unit* teamFC = nullptr;
+            Unit* enemyFC = nullptr;
+
+            if (!teamFCGuid.IsEmpty())
+                teamFC = ws->GetBgMap()->GetPlayer(teamFCGuid);
+
+            if (!enemyFCGuid.IsEmpty())
+                enemyFC = ws->GetBgMap()->GetPlayer(enemyFCGuid);
+
+            bool carryingFlag = !teamFCGuid.IsEmpty() && teamFCGuid == bot->GetObjectGuid();
 
             if (carryingFlag)
             {
@@ -3372,7 +3391,6 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
                     if (teamFlagTaken())
                     {
                         Position hidePos = WS_FLAG_HIDE_ALLIANCE[urand(0, 4)];
-
                         pos.Set(hidePos.x, hidePos.y, hidePos.z, bot->GetMapId());
                     }
                     else
@@ -3385,7 +3403,6 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
                     if (teamFlagTaken())
                     {
                         Position hidePos = WS_FLAG_HIDE_HORDE[urand(0, 4)];
-
                         pos.Set(hidePos.x, hidePos.y, hidePos.z, bot->GetMapId());
                     }
                     else
@@ -3395,6 +3412,9 @@ ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get()
                 }
 
                 posMap["bg objective"] = pos;
+
+                posMap["wsg carrier objective"] = pos;
+
                 return true;
             }
 
@@ -4651,6 +4671,86 @@ bool BGTactics::moveToObjective()
 
     ai::PositionEntry pos = posMap["bg objective"];
 
+    if (bgType == BATTLEGROUND_WS)
+    {
+        BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+        ObjectGuid teamFCGuid = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+        bool carryingFlag = !teamFCGuid.IsEmpty() && teamFCGuid == bot->GetObjectGuid();
+
+        ai::PositionEntry carrierObjective = posMap["wsg carrier objective"];
+
+        if (carryingFlag && !carrierObjective.isSet())
+        {
+            ai->StopMoving();
+
+            pos.Reset();
+            posMap["bg objective"] = pos;
+
+            if (!selectObjective(true))
+                return false;
+
+            pos = posMap["bg objective"];
+        }
+
+        else if (!carryingFlag && carrierObjective.isSet())
+        {
+            ai->StopMoving();
+
+            carrierObjective.Reset();
+            posMap["wsg carrier objective"] = carrierObjective;
+
+            pos.Reset();
+            posMap["bg objective"] = pos;
+
+            if (!selectObjective(true))
+                return false;
+
+            pos = posMap["bg objective"];
+
+            if (!pos.isSet())
+                return false;
+        }
+    }
+
+    if (bgType == BATTLEGROUND_WS && pos.isSet())
+    {
+        BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+        ObjectGuid enemyFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+        bool isCurrentFlagCarrier = !enemyFlagPicker.IsEmpty() && enemyFlagPicker == bot->GetObjectGuid();
+
+        uint32 role = context->GetValue<uint32>("bg role")->Get();
+
+        Position const& ownFlag = bot->GetTeam() == ALLIANCE ? WS_FLAG_POS_ALLIANCE : WS_FLAG_POS_HORDE;
+
+        float dx = pos.x - ownFlag.x;
+        float dy = pos.y - ownFlag.y;
+        float dz = pos.z - ownFlag.z;
+
+        bool objectiveIsOwnFlag = (dx * dx + dy * dy + dz * dz) < (15.0f * 15.0f);
+
+        if (role >= 2 && objectiveIsOwnFlag && !isCurrentFlagCarrier)
+        {
+            bot->GetMotionMaster()->MovementExpired();
+
+            pos.Reset();
+            posMap["bg objective"] = pos;
+
+            RESET_AI_VALUE(Unit*, "team flag carrier");
+            RESET_AI_VALUE(Unit*, "enemy flag carrier");
+
+            selectObjective(true);
+
+            pos = posMap["bg objective"];
+
+            if (!pos.isSet())
+                return false;
+        }
+    }
+
     if (bgType == BATTLEGROUND_WS && pos.isSet())
     {
         BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
@@ -4970,15 +5070,8 @@ bool BGTactics::resetObjective()
         return false;
 
     ai::PositionMap& posMap = context->GetValue<ai::PositionMap&>("position")->Get();
-    ai::PositionEntry pos = posMap["bg objective"];
 
-    if (teamFlagTaken() && (bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG)))
-    {
-        if (pos.x != WS_FLAG_POS_HORDE.x && pos.x != WS_FLAG_POS_ALLIANCE.x && pos.y != WS_FLAG_POS_HORDE.y && pos.y != WS_FLAG_POS_ALLIANCE.y)
-        {
-            return false;
-        }
-    }
+    ai::PositionEntry pos = posMap["bg objective"];
 
     pos.Reset();
     posMap["bg objective"] = pos;
@@ -5493,13 +5586,22 @@ std::vector<uint32>::const_iterator f = find(vFlagIds.begin(), vFlagIds.end(), g
             {
                 if (atBase)
                 {
+                    BattleGroundWS* ws = static_cast<BattleGroundWS*>(bot->GetBattleGround());
+
                     uint32 triggerId = bot->GetTeam() == HORDE ? AREATRIGGER_HORDE_FLAG_SPAWN : AREATRIGGER_ALLIANCE_FLAG_SPAWN;
 
                     WorldPacket data(CMSG_AREATRIGGER);
                     data << triggerId;
+
                     bot->GetSession()->HandleAreaTriggerOpcode(MakeTypedPacket<WorldPackets::Misc::AreaTrigger>(data));
 
-                    resetObjective();
+                    ObjectGuid enemyFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+                    if (enemyFlagPicker != bot->GetObjectGuid())
+                    {
+                        resetObjective();
+                    }
+
                     return true;
                 }
 
@@ -5625,6 +5727,18 @@ bool BGTactics::useBuff()
     if (bgType == BATTLEGROUND_RB)
         bgType = bg->GetTypeID();
 #endif
+
+    if (bgType == BATTLEGROUND_WS)
+    {
+        BattleGroundWS* ws = static_cast<BattleGroundWS*>(bg);
+
+        ObjectGuid enemyFlagPicker = bot->GetTeam() == ALLIANCE ? ws->GetHordeFlagPickerGuid() : ws->GetAllianceFlagPickerGuid();
+
+        bool carryingFlag = (!enemyFlagPicker.IsEmpty() && enemyFlagPicker == bot->GetObjectGuid()) || bot->HasAura(BG_WS_SPELL_WARSONG_FLAG) || bot->HasAura(BG_WS_SPELL_SILVERWING_FLAG);
+
+        if (carryingFlag)
+            return false;
+    }
 
     std::list<ObjectGuid> closeObjects = AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
 
