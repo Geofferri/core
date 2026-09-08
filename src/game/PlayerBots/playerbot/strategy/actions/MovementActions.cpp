@@ -517,6 +517,8 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
 
     bool doDelay = true;
 
+    uint32 const minimalWalkChunkMs = std::max<uint32>(sPlayerbotAIConfig.passiveDelay, 20000u);
+
     //Taxi handling: Start taxi and remove path until it ends.
     if (nextStep->type == PathNodeType::NODE_FLIGHTPATH)
     {
@@ -544,14 +546,40 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
     //Transport handling: If not on transport wait for transport and teleport on it when it's near (and cut to last transport point). If on transport wait until it is near exit and teleport to exit.
     if (nextStep->type == PathNodeType::NODE_TRANSPORT)
     {
-        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point);
-
-        if (!didTransport) //We did not board yet or are on the transport so just wait.
+        if (sPlayerbotAIConfig.transportTeleportType == 2)
         {
+            auto exitStep = nextStep;
+
+            while (std::next(exitStep) != path.end() && std::next(exitStep)->type == PathNodeType::NODE_TRANSPORT)
+            {
+                ++exitStep;
+            }
+
+            auto afterTransport = std::next(exitStep);
+
+            if (afterTransport == path.end())
+            {
+                lastMove.lastPath.clear();
+                return true;
+            }
+
+            PathNodePoint destination = *afterTransport;
+
+            lastMove.lastPath.cutTo(destination, false);
+
+            bot->TeleportTo(destination.point);
+
+            lastMove.nextTeleport = now + std::max<time_t>(1, sPlayerbotAIConfig.passiveDelay / 1000);
+
             return true;
         }
 
-        if (bot->GetTransport()) //Just boarded
+        bool didTransport = UseTransport(ai, nextStep->entry, nextStep->point);
+
+        if (!didTransport)
+            return true;
+
+        if (bot->GetTransport())
         {
             PathNodePoint lastStep = *nextStep;
 
@@ -566,13 +594,11 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
                 break;
             }
 
-            lastMove.lastPath.cutTo(lastStep, false); //Remove path up to last transport point.
-
+            lastMove.lastPath.cutTo(lastStep, false);
             return true;
         }
 
-        //Ready to exit
-        lastMove.lastPath.cutTo(*nextStep, true); //Removing boarding point.
+        lastMove.lastPath.cutTo(*nextStep, true);
 
         nextStep = path.begin();
 
@@ -631,7 +657,7 @@ bool MovementAction::MinimalMove(PlayerbotAI* ai)
 
         nextStep = it;
 
-        if (!it->isWalkable() || time > sPlayerbotAIConfig.passiveDelay)
+        if (!it->isWalkable() || time > minimalWalkChunkMs)
             break;
     }
 
