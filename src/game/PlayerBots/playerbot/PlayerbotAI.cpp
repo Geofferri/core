@@ -2131,8 +2131,7 @@ void PlayerbotAI::DoNextAction(bool min)
 
     if (minimal)
     {
-        if (!TryMinimalMove() && !bot->IsAFK() && !bot->InBattleGround() && !HasRealPlayerMaster())
-            bot->ToggleAFK();
+        TryMinimalMove();
 
         SetAIInternalUpdateDelay(sPlayerbotAIConfig.passiveDelay);
         return;
