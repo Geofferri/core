@@ -197,6 +197,30 @@ void AuctionHouseMgr::SendAuctionWonMail(AuctionEntry* auction)
     }
 }
 
+void AuctionHouseMgr::SendAuctionOutbiddedMail(AuctionEntry* auction)
+{
+    if (!auction || !auction->bidder || !auction->bid)
+        return;
+
+    ObjectGuid oldBidderGuid = ObjectGuid(HIGHGUID_PLAYER, auction->bidder);
+    Player* oldBidder = sObjectMgr.GetPlayer(oldBidderGuid);
+
+    uint32 oldBidderAccountId = 0;
+    if (!oldBidder)
+        oldBidderAccountId = sObjectMgr.GetPlayerAccountIdByGUID(oldBidderGuid);
+
+    if (oldBidder || oldBidderAccountId)
+    {
+        std::ostringstream subject;
+        subject << auction->itemTemplate << ":0:" << AUCTION_OUTBIDDED;
+
+        if (oldBidder)
+            oldBidder->GetSession()->SendAuctionBidderNotification(auction, false);
+
+        MailDraft(subject.str()).SetMoney(auction->bid).SendMailTo(MailReceiver(oldBidder, oldBidderGuid), auction, MAIL_CHECK_MASK_COPIED);
+    }
+}
+
 // call this method to send mail to auction owner, when auction is successful, it does not clear ram
 void AuctionHouseMgr::SendAuctionSuccessfulMail(AuctionEntry* auction)
 {
@@ -639,10 +663,8 @@ void AuctionHouseObject::Update()
         ++next;
         if (curTime > (entry->expireTime))
         {
-            // Either cancel the auction if there was no bidder
-            if (entry->bidder == 0)
+            if (entry->bid == 0)
                 sAuctionMgr.SendAuctionExpiredMail(entry);
-            // Or perform the transaction
             else
             {
                 PlayerTransactionData data;
@@ -854,6 +876,44 @@ uint32 AuctionEntry::GetAuctionOutBid() const
     if (!outbid)
         outbid = 1;
     return outbid;
+}
+
+void AuctionEntry::AuctionBidWinning()
+{
+    sAuctionMgr.SendAuctionSuccessfulMail(this);
+
+    sAuctionMgr.SendAuctionWonMail(this);
+
+    sAuctionMgr.RemoveAItem(itemGuidLow);
+
+    if (AuctionHouseObject* auctionHouse = sAuctionMgr.GetAuctionsMap(auctionHouseEntry))
+        auctionHouse->RemoveAuction(this);
+
+    DeleteFromDB();
+
+    delete this;
+}
+
+bool AuctionEntry::UpdateBid(uint32 newbid)
+{
+    if (buyout && newbid > buyout)
+        newbid = buyout;
+
+    if (bidder)
+        sAuctionMgr.SendAuctionOutbiddedMail(this);
+
+    bidder = 0;
+    bid = newbid;
+
+    if (newbid < buyout || buyout == 0)
+    {
+        CharacterDatabase.PExecute("UPDATE `auction` SET `buyer_guid` = '%u', `last_bid` = '%u' WHERE `id` = '%u'", bidder, bid, Id);
+
+        return true;
+    }
+
+    AuctionBidWinning();
+    return false;
 }
 
 void AuctionEntry::DeleteFromDB() const

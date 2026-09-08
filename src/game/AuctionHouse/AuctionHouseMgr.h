@@ -89,6 +89,10 @@ struct AuctionEntry
     bool BuildAuctionInfo(WorldPacket& data) const;
     void DeleteFromDB() const;
     void SaveToDB() const;
+
+    void AuctionBidWinning();
+    bool UpdateBid(uint32 newbid);
+
     bool IsAvailableFor(Player* player);
 };
 
@@ -168,10 +172,11 @@ class AuctionHouseMgr
             return nullptr;
         }
 
-        //auction messages
+        // auction messages
         void SendAuctionWonMail(AuctionEntry* auction);
         void SendAuctionSuccessfulMail(AuctionEntry* auction);
         void SendAuctionExpiredMail(AuctionEntry* auction);
+        void SendAuctionOutbiddedMail(AuctionEntry* auction);
         static uint32 GetAuctionDeposit(AuctionHouseEntry const* entry, uint32 time, Item* pItem);
 
         static uint32 GetAuctionHouseId(uint32 factionTemplateId);

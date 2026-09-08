@@ -126,7 +126,7 @@ void AuctionHouseBot::Initialize()
             m_auctionTimeMin = m_auctionTimeMax;
         }
 
-        m_buyValue = GetMinMaxConfig("AuctionHouseBot.Buy.Value", 0, 200, 90);
+        m_buyValue = GetMinMaxConfig("AuctionHouseBot.Buy.Value", 0, 200, 80);
 
         auto queryResult = CharacterDatabase.PQuery("SELECT item, value, add_chance, min_amount, max_amount FROM ahbot_items");
         if (queryResult)
@@ -275,30 +275,27 @@ void AuctionHouseBot::Update()
             if (iterator != m_itemData.end() && iterator->second.Value == 0)
                 continue;
 
-            uint32 buyItemCheck = ValueWithVariance(iterator != m_itemData.end() ? iterator->second.Value : CalculateBuyoutPrice(prototype));
+            uint64 buyItemCheck = ValueWithVariance(iterator != m_itemData.end() ? iterator->second.Value : CalculateBuyoutPrice(prototype));
+
             buyItemCheck *= item->GetCount();
+
+            buyItemCheck = buyItemCheck * m_buyValue / 100;
+
             uint32 bidPrice = auction->bid + auction->GetAuctionOutBid();
             if (auction->startbid > bidPrice)
                 bidPrice = auction->startbid;
+
             if (auction->buyout > 0 && buyItemCheck > auction->buyout)
             {
                 buyoutAuctions.push_back(auction);
             }
             else if (buyItemCheck > bidPrice)
             {
-                auction->bidder = 0;
-                auction->bid = bidPrice;
-                CharacterDatabase.PExecute("UPDATE auction SET buyer_guid = '%u', last_bid = '%u' WHERE id = '%u'",
-                    auction->bidder, auction->bid, auction->Id);
+                auction->UpdateBid(bidPrice);
             }
         }
         for (auto auction : buyoutAuctions)
-        {
-            auction->bidder = 0;
-            auction->bid = auction->buyout;
-            CharacterDatabase.PExecute("UPDATE auction SET buyer_guid = '%u', last_bid = '%u' WHERE id = '%u'",
-                auction->bidder, auction->bid, auction->Id);
-        }
+            auction->UpdateBid(auction->buyout);
     }
 }
 
