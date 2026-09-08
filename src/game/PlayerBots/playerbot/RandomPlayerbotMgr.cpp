@@ -39,6 +39,8 @@
 #include "playerbot/TravelMgr.h"
 #include <iomanip>
 #include <float.h>
+#include <algorithm>
+#include <random>
 
 #if PLATFORM == PLATFORM_WINDOWS
 #include "windows.h"
@@ -2396,9 +2398,6 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
     //Do not teleport to maps disabled in config
     tlocs.erase(std::remove_if(tlocs.begin(), tlocs.end(), [](const WorldPosition& l) {std::vector<uint32>::iterator i = find(sPlayerbotAIConfig.randomBotMaps.begin(), sPlayerbotAIConfig.randomBotMaps.end(), l.getMapId()); return i == sPlayerbotAIConfig.randomBotMaps.end(); }), tlocs.end());
 
-    //Random shuffle based on distance. Closer distances are more likely (but not exclusively) to be at the begin of the list.
-    tlocs = WorldPosition(bot).GetNextPoint(tlocs, 0);
-
     //5% + 0.1% per level chance node on different map in selection.
     //tlocs.erase(std::remove_if(tlocs.begin(), tlocs.end(), [bot](WorldLocation const& l) {return l.mapId != bot->GetMapId() && urand(1, 100) > 0.5 * bot->GetLevel(); }), tlocs.end());
 
@@ -2558,6 +2557,53 @@ void RandomPlayerbotMgr::RandomTeleport(Player* bot, std::vector<WorldLocation> 
 
         return;
     }
+
+    std::map<std::pair<uint32, uint32>, std::vector<WorldPosition>> locationsByZone;
+
+    for (WorldPosition const& loc : tlocs)
+    {
+        uint32 zoneId = sTerrainMgr.GetZoneId(loc.getMapId(), loc.x, loc.y, loc.z);
+
+        locationsByZone[std::make_pair(loc.getMapId(), zoneId)].push_back(loc);
+    }
+
+    static thread_local std::mt19937 rng(std::random_device{}());
+
+    std::vector<std::pair<uint32, uint32>> zoneOrder;
+    zoneOrder.reserve(locationsByZone.size());
+
+    for (auto& zone : locationsByZone)
+    {
+        zoneOrder.push_back(zone.first);
+
+        std::shuffle(zone.second.begin(), zone.second.end(), rng);
+    }
+
+    std::shuffle(zoneOrder.begin(), zoneOrder.end(), rng);
+
+    std::vector<WorldPosition> balancedLocations;
+    balancedLocations.reserve(tlocs.size());
+
+    for (size_t pointIndex = 0;; ++pointIndex)
+    {
+        bool added = false;
+
+        for (auto const& zoneKey : zoneOrder)
+        {
+            auto const& points = locationsByZone.find(zoneKey)->second;
+
+            if (pointIndex >= points.size())
+                continue;
+
+            balancedLocations.push_back(points[pointIndex]);
+            added = true;
+        }
+
+        if (!added)
+            break;
+    }
+
+    tlocs.swap(balancedLocations);
 
     auto pmo = sPerformanceMonitor.start(PERF_MON_RNDBOT, "RandomTeleportByLocations");
 
@@ -4418,7 +4464,7 @@ std::list<std::string> RandomPlayerbotMgr::HandleRandomTeleportForLevel(Player* 
         messages.push_back("Bot not found");
         return messages;
     }
-    RandomTeleportForLevel(bot);
+    RandomTeleport(bot, locsPerLevelCache[bot->GetLevel()], false, false);
     messages.push_back("teleport applied to " + std::string(bot->GetName()));
     return messages;
 }

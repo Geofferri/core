@@ -302,7 +302,7 @@ std::vector<WorldPosition*> WorldPosition::GetNextPoint(std::vector<WorldPositio
 
     }
 
-    std::mt19937 gen(time(0));
+    static thread_local std::mt19937 gen(std::random_device{}());
 
     WeightedShuffle(retVec.begin(), retVec.end(), weights.begin(), weights.end(), gen);
 
@@ -341,7 +341,7 @@ std::vector<WorldPosition> WorldPosition::GetNextPoint(std::vector<WorldPosition
 
     }
 
-    std::mt19937 gen(time(0));
+    static thread_local std::mt19937 gen(std::random_device{}());
 
     WeightedShuffle(retVec.begin(), retVec.end(), weights.begin(), weights.end(), gen);
 

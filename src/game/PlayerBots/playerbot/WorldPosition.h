@@ -217,7 +217,7 @@ namespace ai
                 break;
             }
 
-            std::mt19937 gen(time(0));
+            static thread_local std::mt19937 gen(std::random_device{}());
 
             WeightedShuffle(data.begin(), data.end(), weights.begin(), weights.end(), gen);
         }

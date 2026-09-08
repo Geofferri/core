@@ -75,6 +75,33 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
     std::list<ObjectGuid> possibleObjects = bot->GetMap()->IsDungeon() ? AI_VALUE(std::list<ObjectGuid>, "nearest game objects") : AI_VALUE(std::list<ObjectGuid>, "nearest game objects no los");
     std::list<ObjectGuid> possiblePlayers = AI_VALUE(std::list<ObjectGuid>, "nearest friendly players");
 
+    std::unordered_map<ObjectGuid, uint32> rpgTargetCounts;
+
+    if (!ai->HasRealPlayerMaster())
+    {
+        for (ObjectGuid const& playerGuid : possiblePlayers)
+        {
+            Player* player = sObjectMgr.GetPlayer(playerGuid);
+            if (!player)
+                continue;
+
+            if (!ai->IsSafe(player))
+                continue;
+
+            PlayerbotAI* playerAi = player->GetPlayerbotAI();
+            if (!playerAi)
+                continue;
+
+            if (!playerAi->AllowActivity(GRIND_ACTIVITY))
+                continue;
+
+            GuidPosition target = playerAi->GetAiObjectContext()->GetValue<GuidPosition>("rpg target")->Get();
+
+            if (target)
+                ++rpgTargetCounts[target];
+        }
+    }
+
     //List of targets that we rpg'ed with before and should be ignored.
     std::set<ObjectGuid>& ignoreList = AI_VALUE(std::set<ObjectGuid>&, "ignore rpg target");
 
@@ -202,11 +229,17 @@ std::unordered_map<ObjectGuid, float> ChooseRpgTargetAction::GetTargets(Player* 
             }
         }
 
-        //Limit the amount of bots that can rpg with 1 target. Only if the calculation doesn't involve checking 200+ players.
-        if (possiblePlayers.size() < 200 && HasSameTarget(guidP, urand(5, 15), possiblePlayers))
+        // Limit the amount of bots using the same RPG target.
+        // Occupancy was calculated once above, so this remains cheap even in extremely crowded towns.
+        if (!ai->HasRealPlayerMaster())
         {
-            sametarget++;
-            SkipRpgTarget("Too many bots are rpging with this npc.");
+            auto sameTarget = rpgTargetCounts.find(guidP);
+
+            if (sameTarget != rpgTargetCounts.end() && sameTarget->second >= urand(5, 15))
+            {
+                sametarget++;
+                SkipRpgTarget("Too many bots are rpging with this npc.");
+            }
         }
 
         //For all rpg actions that are triggered/possible for this target get the highest relevance.
@@ -486,7 +519,7 @@ bool ChooseRpgTargetAction::Execute(Event& event)
     }
 
     //We pick a random target from the list with targets having a higher relevance of being picked.
-    std::mt19937 gen(time(0));
+    static thread_local std::mt19937 gen(std::random_device{}());
     WeightedShuffle(guidps.begin(), guidps.end(), relevances.begin(), relevances.end(), gen);
     GuidPosition guidP(guidps.front(),bot->GetMapId(), bot->GetInstanceId());
 
