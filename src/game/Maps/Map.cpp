@@ -60,6 +60,8 @@
 #include "PlayerBots/playerbot/PlayerbotAI.h"
 #include "RandomPlayerbotMgr.h"
 
+#include <algorithm>
+
 Map::~Map()
 {
     UnloadAll(true);
@@ -752,7 +754,12 @@ inline void Map::MarkCellsAroundObject(WorldObject const* object)
         for (uint32 y = area.low_bound.y_coord; y <= area.high_bound.y_coord; ++y)
         {
             uint32 cell_id = (y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x;
-            markCell(cell_id);
+
+            if (!isCellMarked(cell_id))
+            {
+                markCell(cell_id);
+                marked_cell_ids.push_back(cell_id);
+            }
         }
     }
 }
@@ -767,22 +774,22 @@ inline void Map::UpdateActiveCellsCallback(uint32 diff, uint32 now, uint32 threa
     int safeDistCells = sWorld.getConfig(CONFIG_UINT32_MTCELLS_SAFEDISTANCE) / SIZE_OF_GRID_CELL + 1;
     totalThreads *= 2;
     threadId = 2 * threadId + step;
-    for (int y = 0; y < TOTAL_NUMBER_OF_CELLS_PER_MAP; ++y)
+    for (uint32 cellId : marked_cell_ids)
     {
-        // Skip grids not for this thread
+        uint32 const y = cellId / TOTAL_NUMBER_OF_CELLS_PER_MAP;
+
+        // Preserve the existing safe-distance/thread ownership logic.
         if ((y / safeDistCells) % totalThreads != threadId)
             continue;
-        for (int x = 0; x < TOTAL_NUMBER_OF_CELLS_PER_MAP; ++x)
-        {
-            uint32 cellId = (y * TOTAL_NUMBER_OF_CELLS_PER_MAP) + x;
-            if (!isCellMarked(cellId))
-                continue;
-            CellPair pair(x, y);
-            Cell cell(pair);
-            cell.SetNoCreate();
-            Visit(cell, grid_object_update);
-            Visit(cell, world_object_update);
-        }
+
+        uint32 const x = cellId % TOTAL_NUMBER_OF_CELLS_PER_MAP;
+
+        CellPair pair(x, y);
+        Cell cell(pair);
+        cell.SetNoCreate();
+
+        Visit(cell, grid_object_update);
+        Visit(cell, world_object_update);
     }
 }
 
@@ -790,61 +797,131 @@ inline void Map::UpdateActiveCellsAsynch(uint32 now, uint32 diff)
 {
     resetMarkedCells();
 
-    // Mark all cells that need update
+    std::chrono::steady_clock::time_point const playerWorkStart = std::chrono::steady_clock::now();
+
+    bool hasRealPlayer = false;
+
+    // Mark all cells around players that need updates.
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
+
+        if (!plr || !plr->IsInWorld())
+            continue;
+
+        if (plr->isRealPlayer())
+            hasRealPlayer = true;
+
         if (!sPlayerbotAIConfig.disableBotOptimizations && !plr->isRealPlayer())
             continue;
+
         MarkCellsAroundObject(plr);
     }
 
+    m_cellPlayerWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - playerWorkStart).count());
+
+    std::chrono::steady_clock::time_point const activeObjectWorkStart = std::chrono::steady_clock::now();
+
+    uint8 const activeObjectSlot = m_activeObjectCellUpdateSlot;
+
+    if (++m_activeObjectCellUpdateSlot >= 3)
+        m_activeObjectCellUpdateSlot = 0;
+
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end(); ++m_activeNonPlayersIter)
-        MarkCellsAroundObject(*m_activeNonPlayersIter);
+    {
+        WorldObject* obj = *m_activeNonPlayersIter;
+
+        ++m_cellActiveObjectCallsAccumulator;
+
+        if (!obj || !obj->IsInWorld())
+            continue;
+
+        if (!sPlayerbotAIConfig.disableBotOptimizations && IsContinent() && !hasRealPlayer)
+        {
+            bool forceEveryTick = false;
+
+            if (Unit* unit = obj->ToUnit())
+                forceEveryTick = unit->IsInCombat();
+
+            if (!forceEveryTick && (obj->GetGUIDLow() % 3) != activeObjectSlot)
+            {
+                continue;
+            }
+        }
+
+        MarkCellsAroundObject(obj);
+    }
+
+    // Preserve the same y/x traversal order the old full-map scan used.
+    std::sort(marked_cell_ids.begin(), marked_cell_ids.end());
+
+    m_cellActiveObjectWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - activeObjectWorkStart).count());
+
+    m_markedCellsAccumulator += marked_cell_ids.size();
+
+    std::chrono::steady_clock::time_point const markedVisitStart = std::chrono::steady_clock::now();
 
     const int nthreads = m_cellThreads->size();
+
     for (int step = 0; step < 2; step++)
     {
         for (int i = 0; i < nthreads; ++i)
-            m_cellThreads << [this, diff, now, i, nthreads, step](){
-                UpdateActiveCellsCallback(diff, now, i, nthreads+1, step);
-            };
+        {
+            m_cellThreads << [this, diff, now, i, nthreads, step]() { UpdateActiveCellsCallback(diff, now, i, nthreads + 1, step); };
+        }
+
         std::future<void> job = m_cellThreads->processWorkload();
-        UpdateActiveCellsCallback(diff, now, nthreads, nthreads+1, step);
+
+        UpdateActiveCellsCallback(diff, now, nthreads, nthreads + 1, step);
+
         if (job.valid())
             job.wait();
     }
+
+    m_cellMarkedVisitWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - markedVisitStart).count());
 }
 
 inline void Map::UpdateActiveCellsSynch(uint32 now, uint32 diff)
 {
     resetMarkedCells();
-    // the player iterator is stored in the map object
-    // to make sure calls to Map::Remove don't invalidate it
+
+    std::chrono::steady_clock::time_point const playerWorkStart = std::chrono::steady_clock::now();
+
+    // The player iterator is stored in the map object
+    // to make sure calls to Map::Remove don't invalidate it.
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
+
         if (!sPlayerbotAIConfig.disableBotOptimizations && !plr->isRealPlayer())
         {
+            ++m_cellBotGridEnsureCallsAccumulator;
+
             // Only ensure the grid is loaded for bots, skip full cell updates
             // so mobs around inactive bots don't get updated and can't aggro.
             EnsureGridLoaded(plr->GetCurrentCell());
             continue;
         }
+
         UpdateCellsAroundObject(now, diff, plr);
     }
 
-    // non-player active objects
+    m_cellPlayerWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - playerWorkStart).count());
+
+    std::chrono::steady_clock::time_point const activeObjectWorkStart = std::chrono::steady_clock::now();
+
+    // Non-player active objects.
     for (m_activeNonPlayersIter = m_activeNonPlayers.begin(); m_activeNonPlayersIter != m_activeNonPlayers.end();)
     {
-        // skip not in world
         WorldObject* obj = *m_activeNonPlayersIter;
 
-        // step before processing, in this case if Map::Remove remove next object we correctly
-        // step to next-next, and if we step to end() then newly added objects can wait next update.
         ++m_activeNonPlayersIter;
+        ++m_cellActiveObjectCallsAccumulator;
+
         UpdateCellsAroundObject(now, diff, obj);
     }
+
+    m_cellActiveObjectWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - activeObjectWorkStart).count());
 }
 
 
@@ -858,6 +935,7 @@ inline void Map::UpdateCells(uint32 map_diff)
 
     m_lastCellsUpdate = now;
     m_currentTime = std::chrono::time_point_cast<std::chrono::milliseconds>(Clock::now());
+    ++m_cellUpdateCallsAccumulator;
 
     // update active cells around players and active objects
     if (IsContinent() && m_cellThreads->status() == ThreadPool::Status::READY)
@@ -865,16 +943,25 @@ inline void Map::UpdateCells(uint32 map_diff)
     else
         UpdateActiveCellsSynch(now, diff);
 
+    std::chrono::steady_clock::time_point const motionWorkStart = std::chrono::steady_clock::now();
+
     if (IsContinent() && m_motionThreads->status() == ThreadPool::Status::READY && !m_unitsMvtUpdate.empty())
     {
-        for (std::unordered_set<Unit*>::iterator it = m_unitsMvtUpdate.begin(); it != m_unitsMvtUpdate.end(); it++)
-            m_motionThreads << [it,diff](){
-                 if ((*it)->IsInWorld())
+        for (std::unordered_set<Unit*>::iterator it = m_unitsMvtUpdate.begin(); it != m_unitsMvtUpdate.end(); ++it)
+        {
+            m_motionThreads << [it, diff]()
+            {
+                if ((*it)->IsInWorld())
                     (*it)->GetMotionMaster()->UpdateMotionAsync(diff);
             };
+        }
+
         m_motionThreads->processWorkload().wait();
     }
+
     m_unitsMvtUpdate.clear();
+
+    m_cellMotionWorkTimeAccumulatorUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - motionWorkStart).count());
 }
 
 
@@ -916,6 +1003,19 @@ void Map::UpdateSessionsMovementAndSpellsIfNeeded()
     m_lastMvtSpellsUpdate = WorldTimer::getMSTime();
 }
 
+void Map::AddBotPlayerUpdateProfile(uint64 totalUs, uint64 instanceUs, uint64 areaUs, uint64 anticheatUs, uint64 aiUs)
+{
+    if (!IsContinent())
+        return;
+
+    m_botPlayerUpdateTimeAccumulatorUs += totalUs;
+    m_botPlayerInstanceTimeAccumulatorUs += instanceUs;
+    m_botPlayerAreaTimeAccumulatorUs += areaUs;
+    m_botPlayerAnticheatTimeAccumulatorUs += anticheatUs;
+    m_botPlayerAiTimeAccumulatorUs += aiUs;
+    ++m_botPlayerUpdateProfileSamples;
+}
+
 void Map::UpdatePlayers(bool updateBots)
 {
     uint32 now = WorldTimer::getMSTime();
@@ -940,6 +1040,14 @@ void Map::UpdatePlayers(bool updateBots)
     }
 
     bool const updateInactivePlayers = !IsContinent();
+
+    PlayerBotMap realPlayersSnapshot;
+    if (updateBots && sPlayerbotAIConfig.forceActiveWhenNearPlayer)
+        realPlayersSnapshot = sRandomPlayerbotMgr.GetPlayersSnapshot();
+
+    float const nearPlayerRange = sPlayerbotAIConfig.reactDistance;
+    float const nearPlayerSqRange = nearPlayerRange * nearPlayerRange;
+
     for (m_mapRefIter = m_mapRefManager.begin(); m_mapRefIter != m_mapRefManager.end(); ++m_mapRefIter)
     {
         Player* plr = m_mapRefIter->getSource();
@@ -953,18 +1061,12 @@ void Map::UpdatePlayers(bool updateBots)
             continue;
 
         bool playerNearby = false;
-
         if (sPlayerbotAIConfig.forceActiveWhenNearPlayer && !plr->isRealPlayer())
         {
-            float range = sPlayerbotAIConfig.reactDistance;
-            float sqRange = range * range;
-
             uint32 const botMapId = plr->GetMapId();
             uint32 const botInstanceId = plr->GetInstanceId();
 
-            std::shared_lock<std::shared_mutex> lock(sRandomPlayerbotMgr.GetPlayersMutex());
-
-            for (auto const& i : sRandomPlayerbotMgr.GetPlayers())
+            for (auto const& i : realPlayersSnapshot)
             {
                 Player* player = i.second;
 
@@ -972,19 +1074,15 @@ void Map::UpdatePlayers(bool updateBots)
                     continue;
 
                 if (player->IsGameMaster() && player->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GM))
-                {
                     continue;
-                }
 
                 if (player->GetMapId() != botMapId || player->GetInstanceId() != botInstanceId)
-                {
                     continue;
-                }
 
-                float dx = plr->GetPositionX() - player->GetPositionX();
-                float dy = plr->GetPositionY() - player->GetPositionY();
+                float const dx = plr->GetPositionX() - player->GetPositionX();
+                float const dy = plr->GetPositionY() - player->GetPositionY();
 
-                if ((dx * dx + dy * dy) < sqRange)
+                if ((dx * dx + dy * dy) < nearPlayerSqRange)
                 {
                     playerNearby = true;
                     break;
@@ -1157,6 +1255,49 @@ void Map::Update(uint32 t_diff)
                 m_averagePlayersUpdateTime2Us10s.store((m_playersUpdateTime2AccumulatorMs * 1000ULL) / samples);
 
                 m_averageOtherUpdateTimeUs10s.store(m_otherUpdateTimeAccumulatorUs / samples);
+
+                m_averageMarkedCells10s.store(m_cellUpdateCallsAccumulator ? m_markedCellsAccumulator / m_cellUpdateCallsAccumulator : 0);
+
+                // Detailed cell averages use the same map-update sample denominator
+                // as the main phase profiling.
+                m_averageCellPlayerWorkTimeUs10s.store(m_cellPlayerWorkTimeAccumulatorUs / samples);
+
+                m_averageCellActiveObjectWorkTimeUs10s.store(m_cellActiveObjectWorkTimeAccumulatorUs / samples);
+
+                m_averageCellMarkedVisitWorkTimeUs10s.store(m_cellMarkedVisitWorkTimeAccumulatorUs / samples);
+
+                m_averageCellMotionWorkTimeUs10s.store(m_cellMotionWorkTimeAccumulatorUs / samples);
+
+                m_cellUpdateCalls10s.store(m_cellUpdateCallsAccumulator);
+                m_cellBotGridEnsureCalls10s.store(m_cellBotGridEnsureCallsAccumulator);
+                m_cellActiveObjectCalls10s.store(m_cellActiveObjectCallsAccumulator);
+
+                m_averageMarkedCells10s.store(m_cellUpdateCallsAccumulator ? m_markedCellsAccumulator / m_cellUpdateCallsAccumulator : 0);
+
+                m_botPlayerUpdateProfileSamples10s.store(m_botPlayerUpdateProfileSamples);
+
+                if (m_botPlayerUpdateProfileSamples)
+                {
+                    uint64 const playerSamples = m_botPlayerUpdateProfileSamples;
+
+                    m_averageBotPlayerUpdateTimeUs10s.store(m_botPlayerUpdateTimeAccumulatorUs / playerSamples);
+
+                    m_averageBotPlayerInstanceTimeUs10s.store(m_botPlayerInstanceTimeAccumulatorUs / playerSamples);
+
+                    m_averageBotPlayerAreaTimeUs10s.store(m_botPlayerAreaTimeAccumulatorUs / playerSamples);
+
+                    m_averageBotPlayerAnticheatTimeUs10s.store(m_botPlayerAnticheatTimeAccumulatorUs / playerSamples);
+
+                    m_averageBotPlayerAiTimeUs10s.store(m_botPlayerAiTimeAccumulatorUs / playerSamples);
+                }
+                else
+                {
+                    m_averageBotPlayerUpdateTimeUs10s.store(0);
+                    m_averageBotPlayerInstanceTimeUs10s.store(0);
+                    m_averageBotPlayerAreaTimeUs10s.store(0);
+                    m_averageBotPlayerAnticheatTimeUs10s.store(0);
+                    m_averageBotPlayerAiTimeUs10s.store(0);
+                }
             }
 
             m_updateTimeAccumulatorUs = 0;
@@ -1170,6 +1311,23 @@ void Map::Update(uint32 t_diff)
             m_visibilityUpdateTimeAccumulatorMs = 0;
             m_playersUpdateTime2AccumulatorMs = 0;
             m_otherUpdateTimeAccumulatorUs = 0;
+
+            m_cellPlayerWorkTimeAccumulatorUs = 0;
+            m_cellActiveObjectWorkTimeAccumulatorUs = 0;
+            m_cellMarkedVisitWorkTimeAccumulatorUs = 0;
+            m_cellMotionWorkTimeAccumulatorUs = 0;
+
+            m_cellUpdateCallsAccumulator = 0;
+            m_cellBotGridEnsureCallsAccumulator = 0;
+            m_cellActiveObjectCallsAccumulator = 0;
+            m_markedCellsAccumulator = 0;
+
+            m_botPlayerUpdateTimeAccumulatorUs = 0;
+            m_botPlayerInstanceTimeAccumulatorUs = 0;
+            m_botPlayerAreaTimeAccumulatorUs = 0;
+            m_botPlayerAnticheatTimeAccumulatorUs = 0;
+            m_botPlayerAiTimeAccumulatorUs = 0;
+            m_botPlayerUpdateProfileSamples = 0;
         }
     }
 

@@ -46,6 +46,7 @@
 #include <mutex>
 #include <shared_mutex>
 #include <atomic>
+#include <vector>
 
 using Movement::Vector3;
 
@@ -436,6 +437,36 @@ class Map : public GridRefManager<NGridType>
 
         double GetAverageOtherUpdateTimeMs10s() const { return static_cast<double>(m_averageOtherUpdateTimeUs10s.load()) / 1000.0; }
 
+        double GetAverageCellPlayerWorkTimeMs10s() const { return static_cast<double>(m_averageCellPlayerWorkTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageCellActiveObjectWorkTimeMs10s() const { return static_cast<double>(m_averageCellActiveObjectWorkTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageCellMarkedVisitWorkTimeMs10s() const { return static_cast<double>(m_averageCellMarkedVisitWorkTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageCellMotionWorkTimeMs10s() const { return static_cast<double>(m_averageCellMotionWorkTimeUs10s.load()) / 1000.0; }
+
+        uint64 GetCellUpdateCalls10s() const { return m_cellUpdateCalls10s.load(); }
+
+        uint64 GetCellBotGridEnsureCalls10s() const { return m_cellBotGridEnsureCalls10s.load(); }
+
+        uint64 GetCellActiveObjectCalls10s() const { return m_cellActiveObjectCalls10s.load(); }
+
+        uint64 GetAverageMarkedCells10s() const { return m_averageMarkedCells10s.load(); }
+
+        double GetAverageBotPlayerUpdateTimeMs10s() const { return static_cast<double>(m_averageBotPlayerUpdateTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageBotPlayerInstanceTimeMs10s() const { return static_cast<double>(m_averageBotPlayerInstanceTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageBotPlayerAreaTimeMs10s() const { return static_cast<double>(m_averageBotPlayerAreaTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageBotPlayerAnticheatTimeMs10s() const { return static_cast<double>(m_averageBotPlayerAnticheatTimeUs10s.load()) / 1000.0; }
+
+        double GetAverageBotPlayerAiTimeMs10s() const { return static_cast<double>(m_averageBotPlayerAiTimeUs10s.load()) / 1000.0; }
+
+        uint64 GetBotPlayerUpdateProfileSamples10s() const { return m_botPlayerUpdateProfileSamples10s.load(); }
+
+        void AddBotPlayerUpdateProfile(uint64 totalUs, uint64 instanceUs, uint64 areaUs, uint64 anticheatUs, uint64 aiUs);
+
         uint32 GetAverageUpdateTimeSamples10s() const { return m_averageUpdateTimeSamples10s.load(); }
 
         float GetBotActivityPercentage() const { return m_botActivityPercentage.load(std::memory_order_relaxed); }
@@ -464,7 +495,12 @@ class Map : public GridRefManager<NGridType>
         void UpdateActiveObjectVisibility(Player* player, ObjectGuidSet& visibleGuids);
         void UpdateActiveObjectVisibility(Player* player, ObjectGuidSet& visibleGuids, UpdateData& data);
 
-        void resetMarkedCells() { marked_cells.reset(); }
+        void resetMarkedCells()
+        {
+            marked_cells.reset();
+            marked_cell_ids.clear();
+        }
+
         bool isCellMarked(uint32 pCellId) { return marked_cells.test(pCellId); }
         void markCell(uint32 pCellId) { marked_cells.set(pCellId); }
 
@@ -743,6 +779,8 @@ class Map : public GridRefManager<NGridType>
         bool m_bLoadedGrids[MAX_NUMBER_OF_GRIDS][MAX_NUMBER_OF_GRIDS];
 
         std::bitset<TOTAL_NUMBER_OF_CELLS_PER_MAP*TOTAL_NUMBER_OF_CELLS_PER_MAP> marked_cells;
+        std::vector<uint32> marked_cell_ids;
+        uint8 m_activeObjectCellUpdateSlot = 0;
 
         mutable std::mutex      m_objectsToRemoveLock;
         std::set<WorldObject *> m_objectsToRemove;
@@ -791,6 +829,25 @@ class Map : public GridRefManager<NGridType>
         uint64 m_visibilityUpdateTimeAccumulatorMs = 0;
         uint64 m_playersUpdateTime2AccumulatorMs = 0;
         uint64 m_otherUpdateTimeAccumulatorUs = 0;
+        uint64 m_markedCellsAccumulator = 0;
+
+        // Detailed cell profiling for the current 10-second window.
+        uint64 m_cellPlayerWorkTimeAccumulatorUs = 0;
+        uint64 m_cellActiveObjectWorkTimeAccumulatorUs = 0;
+        uint64 m_cellMarkedVisitWorkTimeAccumulatorUs = 0;
+        uint64 m_cellMotionWorkTimeAccumulatorUs = 0;
+
+        uint64 m_cellUpdateCallsAccumulator = 0;
+        uint64 m_cellBotGridEnsureCallsAccumulator = 0;
+        uint64 m_cellActiveObjectCallsAccumulator = 0;
+
+        // Detailed full bot Player::Update profiling.
+        uint64 m_botPlayerUpdateTimeAccumulatorUs = 0;
+        uint64 m_botPlayerInstanceTimeAccumulatorUs = 0;
+        uint64 m_botPlayerAreaTimeAccumulatorUs = 0;
+        uint64 m_botPlayerAnticheatTimeAccumulatorUs = 0;
+        uint64 m_botPlayerAiTimeAccumulatorUs = 0;
+        uint64 m_botPlayerUpdateProfileSamples = 0;
 
         // Published 10-second phase averages.
         std::atomic<uint64> m_averageSessionsUpdateTimeUs10s{0};
@@ -804,6 +861,25 @@ class Map : public GridRefManager<NGridType>
         std::atomic<uint64> m_averageUpdateTimeUs10s{0};
         std::atomic<uint32> m_averageUpdateTimeSamples10s{0};
         std::atomic<float> m_botActivityPercentage{-1.0f};
+
+        // Published detailed cell profiling.
+        std::atomic<uint64> m_averageCellPlayerWorkTimeUs10s{0};
+        std::atomic<uint64> m_averageCellActiveObjectWorkTimeUs10s{0};
+        std::atomic<uint64> m_averageCellMarkedVisitWorkTimeUs10s{0};
+        std::atomic<uint64> m_averageCellMotionWorkTimeUs10s{0};
+
+        std::atomic<uint64> m_cellUpdateCalls10s{0};
+        std::atomic<uint64> m_cellBotGridEnsureCalls10s{0};
+        std::atomic<uint64> m_cellActiveObjectCalls10s{0};
+        std::atomic<uint64> m_averageMarkedCells10s{0};
+
+        // Published full bot Player::Update profiling.
+        std::atomic<uint64> m_averageBotPlayerUpdateTimeUs10s{0};
+        std::atomic<uint64> m_averageBotPlayerInstanceTimeUs10s{0};
+        std::atomic<uint64> m_averageBotPlayerAreaTimeUs10s{0};
+        std::atomic<uint64> m_averageBotPlayerAnticheatTimeUs10s{0};
+        std::atomic<uint64> m_averageBotPlayerAiTimeUs10s{0};
+        std::atomic<uint64> m_botPlayerUpdateProfileSamples10s{0};
 
 
         // Elevators are not loaded normally.

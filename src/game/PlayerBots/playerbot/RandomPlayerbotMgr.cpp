@@ -4630,6 +4630,23 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
         double players2Ms = 0.0;
         double otherMs = 0.0;
 
+        double cellPlayerWorkMs = 0.0;
+        double cellActiveObjectWorkMs = 0.0;
+        double cellMarkedVisitWorkMs = 0.0;
+        double cellMotionWorkMs = 0.0;
+
+        uint64 cellUpdateCalls = 0;
+        uint64 cellBotGridEnsureCalls = 0;
+        uint64 cellActiveObjectCalls = 0;
+        uint64 markedCells = 0;
+
+        double botPlayerUpdateMs = 0.0;
+        double botPlayerInstanceMs = 0.0;
+        double botPlayerAreaMs = 0.0;
+        double botPlayerAnticheatMs = 0.0;
+        double botPlayerAiMs = 0.0;
+        uint64 botPlayerUpdateSamples = 0;
+
         std::map<uint32, uint32> zoneBots;
         std::map<uint32, uint32> zoneActiveBots;
     };
@@ -4674,6 +4691,23 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
         stats.players2Ms = map->GetAveragePlayersUpdateTime2Ms10s();
 
         stats.otherMs = map->GetAverageOtherUpdateTimeMs10s();
+
+        stats.cellPlayerWorkMs = map->GetAverageCellPlayerWorkTimeMs10s();
+        stats.cellActiveObjectWorkMs = map->GetAverageCellActiveObjectWorkTimeMs10s();
+        stats.cellMarkedVisitWorkMs = map->GetAverageCellMarkedVisitWorkTimeMs10s();
+        stats.cellMotionWorkMs = map->GetAverageCellMotionWorkTimeMs10s();
+
+        stats.cellUpdateCalls = map->GetCellUpdateCalls10s();
+        stats.cellBotGridEnsureCalls = map->GetCellBotGridEnsureCalls10s();
+        stats.cellActiveObjectCalls = map->GetCellActiveObjectCalls10s();
+        stats.markedCells = map->GetAverageMarkedCells10s();
+
+        stats.botPlayerUpdateMs = map->GetAverageBotPlayerUpdateTimeMs10s();
+        stats.botPlayerInstanceMs = map->GetAverageBotPlayerInstanceTimeMs10s();
+        stats.botPlayerAreaMs = map->GetAverageBotPlayerAreaTimeMs10s();
+        stats.botPlayerAnticheatMs = map->GetAverageBotPlayerAnticheatTimeMs10s();
+        stats.botPlayerAiMs = map->GetAverageBotPlayerAiTimeMs10s();
+        stats.botPlayerUpdateSamples = map->GetBotPlayerUpdateProfileSamples10s();
 
         Map::PlayerList const& players = map->GetPlayers();
 
@@ -4899,6 +4933,29 @@ std::list<std::string> RandomPlayerbotMgr::HandleConsoleCpu(std::string param)
                    << " | players2=" << stats.players2Ms << " ms"
 
                    << " | other=" << stats.otherMs << " ms\n";
+
+                ss << "    Cell detail:"
+                   << " player-work=" << std::fixed << std::setprecision(2) << stats.cellPlayerWorkMs << " ms"
+                   << " | active-objects=" << stats.cellActiveObjectWorkMs << " ms"
+                   << " | marked-visit=" << stats.cellMarkedVisitWorkMs << " ms"
+                   << " | motion=" << stats.cellMotionWorkMs << " ms"
+                   << " | marked-cells=" << stats.markedCells << " | ticks/10s=" << stats.cellUpdateCalls << " | bot-grid-ensures=" << stats.cellBotGridEnsureCalls << " | active-object-visits=" << stats.cellActiveObjectCalls << "\n";
+
+                if (stats.botPlayerUpdateSamples)
+                {
+                    double const accountedPlayerMs = stats.botPlayerInstanceMs + stats.botPlayerAreaMs + stats.botPlayerAnticheatMs + stats.botPlayerAiMs;
+
+                    double const corePlayerMs = std::max(0.0, stats.botPlayerUpdateMs - accountedPlayerMs);
+
+                    ss << "    Bot Player::Update avg:"
+                       << " total=" << std::fixed << std::setprecision(3) << stats.botPlayerUpdateMs << " ms"
+                       << " | core=" << corePlayerMs << " ms"
+                       << " | instance=" << stats.botPlayerInstanceMs << " ms"
+                       << " | area=" << stats.botPlayerAreaMs << " ms"
+                       << " | anticheat=" << stats.botPlayerAnticheatMs << " ms"
+                       << " | botAI=" << stats.botPlayerAiMs << " ms"
+                       << " | samples=" << stats.botPlayerUpdateSamples << "\n";
+                }
             }
 
             if (stats.packetQueueBots)

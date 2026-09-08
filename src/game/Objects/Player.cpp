@@ -22,6 +22,7 @@
 #include <unordered_map>
 #include <cmath>
 #include <sstream>
+#include <chrono>
 
 #include "Player.h"
 #include "Bag.h"
@@ -1123,6 +1124,29 @@ void Player::Update(uint32 update_diff, uint32 p_time)
     if (!IsInWorld())
         return;
 
+    // Detailed profiling for full continent playerbot updates.
+    Map* const profileMap = (!isRealPlayer() && GetMap() && GetMap()->IsContinent()) ? GetMap() : nullptr;
+
+    std::chrono::steady_clock::time_point profileStart;
+
+    uint64 profileInstanceUs = 0;
+    uint64 profileAreaUs = 0;
+    uint64 profileAnticheatUs = 0;
+    uint64 profileAiUs = 0;
+
+    if (profileMap)
+        profileStart = std::chrono::steady_clock::now();
+
+    auto finishBotUpdateProfile = [&]()
+    {
+        if (!profileMap || profileMap != GetMap())
+            return;
+
+        uint64 const totalUs = static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - profileStart).count());
+
+        profileMap->AddBotPlayerUpdateProfile(totalUs, profileInstanceUs, profileAreaUs, profileAnticheatUs, profileAiUs);
+    };
+
     UpdateMirrorTimers(update_diff);
 
     //used to implement delayed far teleports
@@ -1329,11 +1353,25 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
     if (m_enableInstanceSwitch && !IsTaxiFlying() && IsInWorld() && GetMap()->IsContinent() && !GetTransport() && !IsBeingTeleported())
     {
+        std::chrono::steady_clock::time_point instanceProfileStart;
+
+        if (profileMap)
+            instanceProfileStart = std::chrono::steady_clock::now();
+
         bool transition = false;
+
         uint16 newInstanceId = sMapMgr.GetContinentInstanceId(GetMap()->GetId(), GetPositionX(), GetPositionY(), &transition);
+
         if (newInstanceId != GetInstanceId())
+        {
             if (!transition || !IsInCombat())
                 sMapMgr.ScheduleInstanceSwitch(this, newInstanceId);
+        }
+
+        if (profileMap)
+        {
+            profileInstanceUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - instanceProfileStart).count());
+        }
     }
 
     if (IsInWorld())
@@ -1341,6 +1379,7 @@ void Player::Update(uint32 update_diff, uint32 p_time)
         if (m_repopAtGraveyardPending && !HasPendingMovementChange())
         {
             RepopAtGraveyard();
+            finishBotUpdateProfile();
             return;
         }
 
@@ -1348,23 +1387,54 @@ void Player::Update(uint32 update_diff, uint32 p_time)
         {
             if (m_areaCheckTimer <= p_time)
             {
+                std::chrono::steady_clock::time_point areaProfileStart;
+
+                if (profileMap)
+                    areaProfileStart = std::chrono::steady_clock::now();
+
                 UpdateTerainEnvironmentFlags();
                 CheckAreaExploreAndOutdoor();
                 LoadMapCellsAround(GetMap()->GetGridActivationDistance());
+
+                if (profileMap)
+                {
+                    profileAreaUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - areaProfileStart).count());
+                }
+
                 m_areaCheckTimer = 0;
             }
             else
+            {
                 m_areaCheckTimer -= p_time;
+            }
         }
 
         // Anticheat sanction
+        std::chrono::steady_clock::time_point anticheatProfileStart;
+
+        if (profileMap)
+            anticheatProfileStart = std::chrono::steady_clock::now();
+
         std::stringstream reason;
         uint32 cheatAction = GetCheatData()->Update(this, p_time, reason);
+
         if (cheatAction)
+        {
             GetSession()->ProcessAnticheatAction("MovementAnticheat", reason.str().c_str(), cheatAction, sWorld.getConfig(CONFIG_UINT32_AC_MOVEMENT_BAN_DURATION));
+        }
+
+        if (profileMap)
+        {
+            profileAnticheatUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - anticheatProfileStart).count());
+        }
     }
 
     // Playerbot AI updates
+    std::chrono::steady_clock::time_point aiProfileStart;
+
+    if (profileMap)
+        aiProfileStart = std::chrono::steady_clock::now();
+
     {
         std::lock_guard<std::recursive_mutex> aiLock(m_playerbotAIMutex);
 
@@ -1374,6 +1444,13 @@ void Player::Update(uint32 update_diff, uint32 p_time)
 
     if (m_playerbotMgr)
         m_playerbotMgr->UpdateAI(update_diff);
+
+    if (profileMap)
+    {
+        profileAiUs += static_cast<uint64>(std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - aiProfileStart).count());
+    }
+
+    finishBotUpdateProfile();
 }
 
 void Player::OnDisconnected()

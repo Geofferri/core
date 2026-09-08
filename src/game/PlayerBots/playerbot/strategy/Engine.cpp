@@ -152,13 +152,19 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
             ActionNode* actionNode = queue.Pop();
             Action* action = InitializeAction(actionNode);
 
-            std::string actionName = (action ? action->getName() : "unknown");
-            if (!event.getSource().empty())
-                actionName += " <" + event.getSource() + ">";
-            
-            auto pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            std::unique_ptr<PerformanceMonitorOperation> pmo1;
 
-            if(action)
+            if (sPlayerbotAIConfig.perfMonEnabled)
+            {
+                std::string actionName = (action ? action->getName() : "unknown");
+
+                if (!event.getSource().empty())
+                    actionName += " <" + event.getSource() + ">";
+
+                pmo1 = sPerformanceMonitor.start(PERF_MON_ACTION, actionName, ai);
+            }
+
+            if (action)
                 action->setRelevance(relevance);
 
             if (!action)
@@ -192,7 +198,11 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                 bool isUseful = false;
                 if (!isStunned || action->isUsefulWhenStunned())
                 {
-                    auto pmo2 = sPerformanceMonitor.start(PERF_MON_ACTION, "isUseful", ai);
+                    std::unique_ptr<PerformanceMonitorOperation> pmo2;
+
+                    if (sPlayerbotAIConfig.perfMonEnabled)
+                        pmo2 = sPerformanceMonitor.start(PERF_MON_ACTION, "isUseful", ai);
+
                     isUseful = action->isUseful();
                     pmo2.reset();
                 }
@@ -233,13 +243,21 @@ bool Engine::DoNextAction(Unit* unit, int depth, bool minimal, bool isStunned)
                         }
                     }
 
-                    auto pmo3 = sPerformanceMonitor.start(PERF_MON_ACTION, "isPossible", ai);
+                    std::unique_ptr<PerformanceMonitorOperation> pmo3;
+
+                    if (sPlayerbotAIConfig.perfMonEnabled)
+                        pmo3 = sPerformanceMonitor.start(PERF_MON_ACTION, "isPossible", ai);
+
                     bool isPossible = action->isPossible();
                     pmo3.reset();
 
                     if (isPossible && relevance)
                     {
-                        auto pmo4 = sPerformanceMonitor.start(PERF_MON_ACTION, "Execute", ai);
+                        std::unique_ptr<PerformanceMonitorOperation> pmo4;
+
+                        if (sPlayerbotAIConfig.perfMonEnabled)
+                            pmo4 = sPerformanceMonitor.start(PERF_MON_ACTION, "Execute", ai);
+
                         actionExecuted = ListenAndExecute(action, event);
                         pmo4.reset();
 
@@ -613,9 +631,13 @@ void Engine::ProcessTriggers(bool minimal)
         {
             if (minimal && node->getFirstRelevance() < 100)
                 continue;
-            auto pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
-            Event event = trigger->Check();
 
+            std::unique_ptr<PerformanceMonitorOperation> pmo;
+
+            if (sPlayerbotAIConfig.perfMonEnabled)
+                pmo = sPerformanceMonitor.start(PERF_MON_TRIGGER, trigger->getName(), ai);
+
+            Event event = trigger->Check();
 #ifdef PLAYERBOT_ELUNA
             // used by eluna    
             if (Eluna* e = ai->GetBot()->GetEluna())
@@ -781,17 +803,29 @@ bool Engine::ListenAndExecute(Action* action, Event& event)
 
 void Engine::LogAction(const char* format, ...)
 {
+    Player* bot = ai->GetBot();
+
+    // Do not spend time formatting/debug-tracking actions that will not
+    // be logged anyway. This is the normal case for ungrouped random bots.
+    if (!testMode && sPlayerbotAIConfig.logInGroupOnly && (!bot || !bot->GetGroup()))
+    {
+        return;
+    }
+
     char buf[1024];
 
     va_list ap;
     va_start(ap, format);
     vsprintf(buf, format, ap);
     va_end(ap);
+
     lastAction += "|";
     lastAction += buf;
+
     if (lastAction.size() > 512)
     {
         lastAction = lastAction.substr(512);
+
         size_t pos = lastAction.find("|");
         lastAction = (pos == std::string::npos ? "" : lastAction.substr(pos));
     }
@@ -799,17 +833,13 @@ void Engine::LogAction(const char* format, ...)
     if (testMode)
     {
         FILE* file = fopen("test.log", "a");
-        fprintf(file, "%s",buf);
+        fprintf(file, "%s", buf);
         fprintf(file, "\n");
         fclose(file);
     }
     else
     {
-        Player* bot = ai->GetBot();
-        if (sPlayerbotAIConfig.logInGroupOnly && !bot->GetGroup())
-            return;
-
-        sLog.Out(LOG_BASIC, LOG_LVL_DETAIL,  "%s %s", bot->GetName(), buf);
+        sLog.Out(LOG_BASIC, LOG_LVL_DETAIL, "%s %s", bot->GetName(), buf);
     }
 }
 
