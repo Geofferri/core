@@ -109,6 +109,9 @@ bool QuestRelationTravelDestination::IsPossible(const PlayerTravelInfo& info) co
 
     const Quest* quest = GetQuestTemplate();
 
+        if (!forceThisQuest && quest->GetType() == QUEST_TYPE_PVP)
+        return false;
+
     if (GetRelation() == 0)
     {
         if (!forceThisQuest && (int32)quest->GetQuestLevel() >= (int32)info.GetLevel() + (int32)5)
@@ -225,6 +228,9 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
     if (forceThisQuest && !info.IsFocusQuest(GetQuestId()))
         return false;
 
+    if (!forceThisQuest && GetQuestTemplate()->GetType() == QUEST_TYPE_PVP)
+        return false;
+
     bool skipShouldGrindCheck = false;
 
     //Check mob level
@@ -303,13 +309,6 @@ bool QuestObjectiveTravelDestination::IsPossible(const PlayerTravelInfo& info) c
 
         //Do not try to do dungeon/elite quests in instances without a group.
         if ((GetQuestTemplate()->GetType() == QUEST_TYPE_ELITE || GetQuestTemplate()->GetType() == QUEST_TYPE_DUNGEON || GetQuestTemplate()->GetType() == QUEST_TYPE_RAID) && !info.GetBoolValue("can fight boss"))
-        {
-            if (!IsOverWorld(info.GetPosition()))
-                return false;
-        }
-
-        //Do not try to do pvp quests in bg's (no way to travel there). 
-        if (GetQuestTemplate()->GetType() == QUEST_TYPE_PVP)
         {
             if (!IsOverWorld(info.GetPosition()))
                 return false;

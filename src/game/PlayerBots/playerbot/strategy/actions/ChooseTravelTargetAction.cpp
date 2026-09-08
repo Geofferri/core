@@ -1347,6 +1347,8 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
     std::vector<std::tuple<uint32, int32, float>> destinationFetches = { {(uint32)TravelDestinationPurpose::QuestGiver, 0, static_cast<float>(400 + bot->GetLevel() * 10)} };
 
+    std::set<uint32> focusQuests = AI_VALUE(focusQuestTravelList, "focus travel target");
+
     for (ObjectGuid guid : AI_VALUE(std::list<ObjectGuid>, "group members"))
     {
         Player* player = sObjectMgr.GetPlayer(guid);
@@ -1375,6 +1377,11 @@ bool RequestQuestTravelTargetAction::Execute(Event& event)
 
             if (!questTemplate)
                 continue;
+
+            if (questTemplate->GetType() == QUEST_TYPE_PVP && focusQuests.find(questId) == focusQuests.end())
+            {
+                continue;
+            }
 
             if (player->CanRewardQuest(questTemplate, false))
                 flag = (uint32)TravelDestinationPurpose::QuestTaker;
