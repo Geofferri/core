@@ -8838,19 +8838,28 @@ bool PlayerbotAI::TryMinimalMove()
         allowActiveCheckTimer[TRAVEL_ACTIVITY] = oldTravelCheck;
     };
 
-    auto allowHeavyMinimalTravelWork = []() -> bool
+    auto allowHeavyMinimalTravelWork = [&](uint32 intervalMs, bool targetSelection) -> bool
     {
+        using Clock = std::chrono::steady_clock;
+
         static std::mutex gateMutex;
-        static std::chrono::steady_clock::time_point nextAllowed;
+        static std::map<uint64, Clock::time_point> nextTargetAllowed;
+        static std::map<uint64, Clock::time_point> nextPathAllowed;
+
+        uint64 const partitionKey = (static_cast<uint64>(bot->GetMapId()) << 32) | static_cast<uint64>(bot->GetInstanceId());
 
         std::lock_guard<std::mutex> lock(gateMutex);
 
-        auto const current = std::chrono::steady_clock::now();
+        auto& gates = targetSelection ? nextTargetAllowed : nextPathAllowed;
+
+        Clock::time_point& nextAllowed = gates[partitionKey];
+
+        Clock::time_point const current = Clock::now();
 
         if (current < nextAllowed)
             return false;
 
-        nextAllowed = current + std::chrono::milliseconds(100);
+        nextAllowed = current + std::chrono::milliseconds(intervalMs);
 
         return true;
     };
@@ -8879,7 +8888,7 @@ bool PlayerbotAI::TryMinimalMove()
 
     case TravelStatus::TRAVEL_STATUS_READY:
         {
-            if (!allowHeavyMinimalTravelWork())
+            if (!allowHeavyMinimalTravelWork(100, false))
             {
                 lastMove.nextMinimalRepath = now + 1 + (bot->GetGUIDLow() % 3);
 
@@ -8901,7 +8910,7 @@ bool PlayerbotAI::TryMinimalMove()
 
     case TravelStatus::TRAVEL_STATUS_TRAVEL:
         {
-            if (!allowHeavyMinimalTravelWork())
+            if (!allowHeavyMinimalTravelWork(100, false))
             {
                 lastMove.nextMinimalRepath = now + 1 + (bot->GetGUIDLow() % 3);
 
@@ -8932,7 +8941,7 @@ bool PlayerbotAI::TryMinimalMove()
     case TravelStatus::TRAVEL_STATUS_NONE:
     case TravelStatus::TRAVEL_STATUS_EXPIRED:
         {
-            if (!allowHeavyMinimalTravelWork())
+            if (!allowHeavyMinimalTravelWork(50, true))
             {
                 lastMove.nextMinimalRepath = now + 1 + (bot->GetGUIDLow() % 3);
 
