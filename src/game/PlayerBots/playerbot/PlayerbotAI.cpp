@@ -8791,8 +8791,114 @@ bool PlayerbotAI::IsAvQuester() const
 
 bool PlayerbotAI::TryMinimalMove()
 {
+    if (!sPlayerbotAIConfig.enableMinimalMove)
+        return false;
+
     if (!bot || !bot->IsInWorld() || bot->IsBeingTeleported())
         return false;
 
-    return MovementAction::MinimalMove(this);
+    if (IsRealPlayer() || HasRealPlayerMaster())
+        return false;
+
+    if (bot->InBattleGround() || bot->IsTaxiFlying())
+        return false;
+
+    LastMovement& lastMovement = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+
+    if (!lastMovement.lastPath.empty())
+        return MovementAction::MinimalMove(this);
+
+    if (!currentEngine || currentState != BotState::BOT_STATE_NON_COMBAT)
+        return false;
+
+    TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+
+    if (!travelTarget)
+        return false;
+
+    time_t now = time(nullptr);
+
+    auto* nextBootstrapValue = aiObjectContext->GetValue<time_t>("manual time", "minimal move travel bootstrap");
+
+    time_t nextBootstrap = nextBootstrapValue->Get();
+
+    if (!nextBootstrap)
+    {
+        nextBootstrapValue->Set(now + 1 + (bot->GetGUIDLow() % 30));
+
+        return false;
+    }
+
+    if (nextBootstrap > now)
+        return false;
+
+    travelTarget->CheckStatus();
+
+    TravelStatus status = travelTarget->GetStatus();
+
+    bool oldTravelAllowed = allowActive[TRAVEL_ACTIVITY];
+    time_t oldTravelCheck = allowActiveCheckTimer[TRAVEL_ACTIVITY];
+
+    allowActive[TRAVEL_ACTIVITY] = true;
+    allowActiveCheckTimer[TRAVEL_ACTIVITY] = now;
+
+    Event event;
+
+    switch (status)
+    {
+    case TravelStatus::TRAVEL_STATUS_PREPARE:
+        {
+            currentEngine->ExecuteAction("choose travel target", event);
+
+            nextBootstrapValue->Set(now + 2);
+            break;
+        }
+
+    case TravelStatus::TRAVEL_STATUS_READY:
+    case TravelStatus::TRAVEL_STATUS_TRAVEL:
+        {
+            currentEngine->ExecuteAction("move to travel target", event);
+
+            nextBootstrapValue->Set(now + 5);
+            break;
+        }
+
+    case TravelStatus::TRAVEL_STATUS_NONE:
+    case TravelStatus::TRAVEL_STATUS_EXPIRED:
+        {
+            currentEngine->DoNextAction(nullptr, 0, false, bot->IsTaxiFlying());
+
+            if (travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
+            {
+                nextBootstrapValue->Set(now + 2);
+            }
+            else
+            {
+                nextBootstrapValue->Set(now + 30);
+            }
+
+            break;
+        }
+
+    case TravelStatus::TRAVEL_STATUS_WORK:
+    case TravelStatus::TRAVEL_STATUS_COOLDOWN:
+        {
+            nextBootstrapValue->Set(now + 10);
+            break;
+        }
+
+    default:
+        {
+            nextBootstrapValue->Set(now + 10);
+            break;
+        }
+    }
+
+    allowActive[TRAVEL_ACTIVITY] = oldTravelAllowed;
+    allowActiveCheckTimer[TRAVEL_ACTIVITY] = oldTravelCheck;
+
+    if (!lastMovement.lastPath.empty())
+        return MovementAction::MinimalMove(this);
+
+    return false;
 }
