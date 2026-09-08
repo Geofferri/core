@@ -8963,7 +8963,7 @@ bool PlayerbotAI::TryMinimalMove()
             }
             else
             {
-                lastMove.nextMinimalRepath = now + 300 + (bot->GetGUIDLow() % 300);
+                lastMove.nextMinimalRepath = now + 30 + (bot->GetGUIDLow() % 30);
             }
 
             return false;
