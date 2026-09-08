@@ -80,10 +80,6 @@ void ArmsWarriorStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
     triggers.push_back(new TriggerNode(
         "heroic strike",
         NextAction::array(0, new NextAction("heroic strike", ACTION_NORMAL + 1), NULL)));
-
-    triggers.push_back(new TriggerNode(
-        "rend",
-        NextAction::array(0, new NextAction("rend", ACTION_NORMAL), NULL)));
 }
 
 void ArmsWarriorStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
