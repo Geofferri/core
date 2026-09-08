@@ -2115,13 +2115,10 @@ void PlayerbotAI::DoNextAction(bool min)
     }
 
     bool minimal = !AllowActivity();
-
     bool needsTravelTarget = false;
     if (minimal && sPlayerbotAIConfig.enableMinimalMove)
     {
         if (!aiObjectContext->GetValue<bool>("travel target active")->Get())
-            needsTravelTarget = true;
-        else if (aiObjectContext->GetValue<LastMovement&>("last movement")->Get().lastPath.empty())
             needsTravelTarget = true;
     }
 
@@ -8803,102 +8800,130 @@ bool PlayerbotAI::TryMinimalMove()
     if (bot->InBattleGround() || bot->IsTaxiFlying())
         return false;
 
-    LastMovement& lastMovement = aiObjectContext->GetValue<LastMovement&>("last movement")->Get();
+    LastMovement& lastMove = GetLastMovement();
 
-    if (!lastMovement.lastPath.empty())
+    if (!lastMove.lastPath.empty())
         return MovementAction::MinimalMove(this);
 
     if (!currentEngine || currentState != BotState::BOT_STATE_NON_COMBAT)
         return false;
 
-    TravelTarget* travelTarget = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
+    time_t const now = time(nullptr);
 
-    if (!travelTarget)
+    if (lastMove.nextMinimalRepath > now)
         return false;
 
-    time_t now = time(nullptr);
+    TravelTarget* target = aiObjectContext->GetValue<TravelTarget*>("travel target")->Get();
 
-    auto* nextBootstrapValue = aiObjectContext->GetValue<time_t>("manual time", "minimal move travel bootstrap");
-
-    time_t nextBootstrap = nextBootstrapValue->Get();
-
-    if (!nextBootstrap)
+    if (!target)
     {
-        nextBootstrapValue->Set(now + 1 + (bot->GetGUIDLow() % 30));
-
+        lastMove.nextMinimalRepath = now + 30;
         return false;
     }
 
-    if (nextBootstrap > now)
-        return false;
+    auto executeTravelAction = [&](char const* action)
+    {
+        bool const oldTravelAllowed = allowActive[TRAVEL_ACTIVITY];
+        time_t const oldTravelCheck = allowActiveCheckTimer[TRAVEL_ACTIVITY];
 
-    travelTarget->CheckStatus();
+        allowActive[TRAVEL_ACTIVITY] = true;
+        allowActiveCheckTimer[TRAVEL_ACTIVITY] = now;
 
-    TravelStatus status = travelTarget->GetStatus();
+        Event event;
+        currentEngine->ExecuteAction(action, event);
 
-    bool oldTravelAllowed = allowActive[TRAVEL_ACTIVITY];
-    time_t oldTravelCheck = allowActiveCheckTimer[TRAVEL_ACTIVITY];
+        allowActive[TRAVEL_ACTIVITY] = oldTravelAllowed;
+        allowActiveCheckTimer[TRAVEL_ACTIVITY] = oldTravelCheck;
+    };
 
-    allowActive[TRAVEL_ACTIVITY] = true;
-    allowActiveCheckTimer[TRAVEL_ACTIVITY] = now;
+    TravelStatus status = target->GetStatus();
 
-    Event event;
+    if (status == TravelStatus::TRAVEL_STATUS_TRAVEL || status == TravelStatus::TRAVEL_STATUS_WORK || status == TravelStatus::TRAVEL_STATUS_COOLDOWN)
+    {
+        target->CheckStatus();
+        status = target->GetStatus();
+    }
 
     switch (status)
     {
     case TravelStatus::TRAVEL_STATUS_PREPARE:
         {
-            currentEngine->ExecuteAction("choose travel target", event);
+            lastMove.nextMinimalRepath = now + 2;
 
-            nextBootstrapValue->Set(now + 2);
-            break;
+            executeTravelAction("choose travel target");
+
+            if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_READY)
+                lastMove.nextMinimalRepath = now + 1;
+
+            return false;
         }
 
     case TravelStatus::TRAVEL_STATUS_READY:
-    case TravelStatus::TRAVEL_STATUS_TRAVEL:
         {
-            currentEngine->ExecuteAction("move to travel target", event);
+            lastMove.nextMinimalRepath = now + 30 + (bot->GetGUIDLow() % 15);
 
-            nextBootstrapValue->Set(now + 5);
-            break;
+            executeTravelAction("move to travel target");
+
+            if (!lastMove.lastPath.empty())
+            {
+                lastMove.nextMinimalRepath = 0;
+                return MovementAction::MinimalMove(this);
+            }
+
+            return false;
         }
 
-    case TravelStatus::TRAVEL_STATUS_NONE:
-    case TravelStatus::TRAVEL_STATUS_EXPIRED:
+    case TravelStatus::TRAVEL_STATUS_TRAVEL:
         {
-            currentEngine->DoNextAction(nullptr, 0, false, bot->IsTaxiFlying());
+            lastMove.nextMinimalRepath = now + 30 + (bot->GetGUIDLow() % 15);
 
-            if (travelTarget->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
+            executeTravelAction("move to travel target");
+
+            if (!lastMove.lastPath.empty())
             {
-                nextBootstrapValue->Set(now + 2);
-            }
-            else
-            {
-                nextBootstrapValue->Set(now + 30);
+                lastMove.nextMinimalRepath = 0;
+                return MovementAction::MinimalMove(this);
             }
 
-            break;
+            return false;
         }
 
     case TravelStatus::TRAVEL_STATUS_WORK:
     case TravelStatus::TRAVEL_STATUS_COOLDOWN:
         {
-            nextBootstrapValue->Set(now + 10);
-            break;
+            lastMove.nextMinimalRepath = now + 10 + (bot->GetGUIDLow() % 5);
+
+            return false;
+        }
+
+    case TravelStatus::TRAVEL_STATUS_NONE:
+    case TravelStatus::TRAVEL_STATUS_EXPIRED:
+        {
+            lastMove.nextMinimalRepath = now + 30 + (bot->GetGUIDLow() % 30);
+
+            bool const oldTravelAllowed = allowActive[TRAVEL_ACTIVITY];
+            time_t const oldTravelCheck = allowActiveCheckTimer[TRAVEL_ACTIVITY];
+
+            allowActive[TRAVEL_ACTIVITY] = true;
+            allowActiveCheckTimer[TRAVEL_ACTIVITY] = now;
+
+            currentEngine->DoNextAction(NULL, 0, false, bot->IsTaxiFlying());
+
+            allowActive[TRAVEL_ACTIVITY] = oldTravelAllowed;
+            allowActiveCheckTimer[TRAVEL_ACTIVITY] = oldTravelCheck;
+
+            if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_PREPARE)
+                lastMove.nextMinimalRepath = now + 2;
+            else if (target->GetStatus() == TravelStatus::TRAVEL_STATUS_READY)
+                lastMove.nextMinimalRepath = now + 1;
+
+            return false;
         }
 
     default:
         {
-            nextBootstrapValue->Set(now + 10);
-            break;
+            lastMove.nextMinimalRepath = now + 10;
+            return false;
         }
     }
-
-    allowActive[TRAVEL_ACTIVITY] = oldTravelAllowed;
-    allowActiveCheckTimer[TRAVEL_ACTIVITY] = oldTravelCheck;
-
-    if (!lastMovement.lastPath.empty())
-        return MovementAction::MinimalMove(this);
-
-    return false;
 }
