@@ -1091,7 +1091,6 @@ void PlayerbotAI::OnResurrected()
 {
     if (IsStateActive(BotState::BOT_STATE_DEAD) && sServerFacade.IsAlive(bot))
     {
-        // Stop following on resurrected
         if ((HasStrategy("follow", BotState::BOT_STATE_COMBAT) || HasStrategy("wander", BotState::BOT_STATE_COMBAT)) &&
             !(HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) || HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT)))
         {
@@ -1130,6 +1129,23 @@ void PlayerbotAI::HandleCommands()
 
         std::string command = holder.GetCommand();
         Player* owner = holder.GetOwner();
+
+        if (command.compare(0, 8, "__pb_do ") == 0)
+        {
+            std::string action = command.substr(8);
+
+            if (owner)
+            {
+                Event event("do", "", owner);
+                DoSpecificAction(action, event);
+            }
+            else
+            {
+                DoSpecificAction(action);
+            }
+
+            continue;
+        }
 
         if (!helper.ParseChatCommand(command, owner) && holder.GetType() == CHAT_MSG_WHISPER)
         {
@@ -1478,22 +1494,70 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     if (type == CHAT_MSG_RAID_WARNING && filtered.find(bot->GetName()) != std::string::npos && filtered.find("award") == std::string::npos)
     {
         ChatCommandHolder cmd("warning", &fromPlayer, type);
-        chatCommands.push(cmd);
+
+        {
+            std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+            chatCommands.push(cmd);
+        }
+
         return;
     }
 
     if ((filtered.size() > 2 && filtered.substr(0, 2) == "d ") || (filtered.size() > 3 && filtered.substr(0, 3) == "do "))
     {
-        Event event("do", "", &fromPlayer);
         std::string action = filtered.substr(filtered.find(" ") + 1);
-        DoSpecificAction(action, event);
+
+        time_t executeTime = 0;
+
+        if (action == "equip upgrades" && type != CHAT_MSG_WHISPER && bot->GetGroup())
+        {
+            uint32 index = 1;
+
+            Group* group = bot->GetGroup();
+
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->getSource();
+
+                if (member == master)
+                    continue;
+
+                if (member == bot)
+                    break;
+
+                ++index;
+            }
+
+            static constexpr uint32 EQUIP_UPGRADES_BATCH_SIZE = 4;
+
+            uint32 delaySeconds = 1 + ((index - 1) / EQUIP_UPGRADES_BATCH_SIZE);
+
+            executeTime = time(0) + delaySeconds;
+        }
+
+        ChatCommandHolder cmd("__pb_do " + action, &fromPlayer, type, executeTime);
+
+        {
+            std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+            chatCommands.push(cmd);
+        }
+
+        return;
     }
+
     if (ChatHelper::parseValue("command", filtered).substr(0, 3) == "do ")
     {
-        Event event("do", "", &fromPlayer);
         std::string action = ChatHelper::parseValue("command", filtered);
         action = action.substr(3);
-        DoSpecificAction(action, event);
+
+        ChatCommandHolder cmd("__pb_do " + action, &fromPlayer, type);
+
+        {
+            std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+            chatCommands.push(cmd);
+        }
+
+        return;
     }
     else if (type != CHAT_MSG_WHISPER && filtered.size() > 6 && filtered.substr(0, 6) == "queue ")
     {
@@ -1514,7 +1578,11 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
             }
         }
         ChatCommandHolder cmd(remaining, &fromPlayer, type, time(0) + index);
-        chatCommands.push(cmd);
+
+        {
+            std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+            chatCommands.push(cmd);
+        }
     }
     else if (filtered == "reset")
     {
@@ -1561,6 +1629,8 @@ void PlayerbotAI::HandleCommand(uint32 type, const std::string& text, Player& fr
     else
     {
         ChatCommandHolder cmd(filtered, &fromPlayer, type);
+
+        std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
         chatCommands.push(cmd);
     }
 }
