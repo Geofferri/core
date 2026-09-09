@@ -9,6 +9,7 @@
 #include <map>
 #include <list>
 #include <shared_mutex>
+#include <atomic>
 
 class WorldPacket;
 class Player;
@@ -70,6 +71,7 @@ class RandomPlayerbotMgr : public PlayerbotHolder
         virtual void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
 private:
         void ScaleBotActivity();
+        void UpdateRemoteBotActivityCap();
         void LogPlayerLocation();
         void DelayedFacingFix();
         void LoginFreeBots();
@@ -186,6 +188,7 @@ public:
         //pid values are set in constructor
         botPID pid = botPID(1, 50, -50, 0, 0, 0);
         float activityMod = 0.25;
+        std::atomic<uint32> remoteBotActivityCap{100};
         time_t continentInstancedActivityTimer = 0;
         std::map<std::string, uint32> databaseDelay;
         uint32 GetEventValue(uint32 bot, std::string event);

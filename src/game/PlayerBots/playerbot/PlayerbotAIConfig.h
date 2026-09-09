@@ -240,6 +240,9 @@ public:
     bool limitCombatActivity;
     bool guildOrderAlwaysActive;
     uint32 botActiveAlone;
+    uint32 botActiveAloneDungeon;
+    uint32 botActiveAloneRaid;
+    uint32 botActiveAloneBattleground;
     uint32 diffWithPlayer;
     uint32 diffEmpty;
     float maxActivityRatePerTick;

@@ -702,35 +702,73 @@ void RandomPlayerbotMgr::UpdateAIInternal(uint32 elapsed, bool minimal)
     // AsyncPQuery ping not compatible with vmangos
 }
 
+void RandomPlayerbotMgr::UpdateRemoteBotActivityCap()
+{
+    uint32 activityCap = 100;
+
+    for (auto const& mapPair : sMapMgr.Maps())
+    {
+        Map* map = mapPair.second;
+
+        if (!map || !map->HaveRealPlayers())
+            continue;
+
+        if (map->IsBattleGround())
+        {
+            activityCap = std::min(activityCap, sPlayerbotAIConfig.botActiveAloneBattleground);
+        }
+        else if (map->IsRaid())
+        {
+            activityCap = std::min(activityCap, sPlayerbotAIConfig.botActiveAloneRaid);
+        }
+        else if (map->IsNonRaidDungeon())
+        {
+            activityCap = std::min(activityCap, sPlayerbotAIConfig.botActiveAloneDungeon);
+        }
+
+        if (activityCap == 1)
+            break;
+    }
+
+    remoteBotActivityCap.store(activityCap, std::memory_order_relaxed);
+}
+
 float RandomPlayerbotMgr::getActivityPercentage(Player* bot)
 {
-    if (!sPlayerbotAIConfig.continentInstancedActivityScaling)
-        return getActivityPercentage();
+    float activityPercentage = getActivityPercentage();
 
-    if (!bot || !bot->IsInWorld())
-        return getActivityPercentage();
+    if (sPlayerbotAIConfig.continentInstancedActivityScaling && bot && bot->IsInWorld())
+    {
+        Map* map = bot->GetMap();
+
+        if (map && map->IsContinent() && map->GetInstanceId() != 0 && map->GetAverageUpdateTimeSamples10s())
+        {
+            float const localActivity = map->GetBotActivityPercentage();
+
+            if (localActivity >= 0.0f)
+                activityPercentage = localActivity;
+        }
+    }
+
+    uint32 const remoteActivityCap = remoteBotActivityCap.load(std::memory_order_relaxed);
+
+    if (remoteActivityCap >= 100 || !bot || !bot->IsInWorld())
+        return activityPercentage;
 
     Map* map = bot->GetMap();
 
-    if (!map)
-        return getActivityPercentage();
+    if (map && map->GetInstanceId() != 0 && map->HaveRealPlayers())
+    {
+        return activityPercentage;
+    }
 
-    if (!map->IsContinent() || map->GetInstanceId() == 0)
-        return getActivityPercentage();
-
-    if (!map->GetAverageUpdateTimeSamples10s())
-        return getActivityPercentage();
-
-    float const localActivity = map->GetBotActivityPercentage();
-
-    if (localActivity < 0.0f)
-        return getActivityPercentage();
-
-    return localActivity;
+    return std::min(activityPercentage, static_cast<float>(remoteActivityCap));
 }
 
 void RandomPlayerbotMgr::ScaleBotActivity()
 {
+    UpdateRemoteBotActivityCap();
+
     float previousActivityPercentage = getActivityPercentage();
 
     uint32 wantedDiff = sRandomPlayerbotMgr.GetPlayers().empty() ? sPlayerbotAIConfig.diffEmpty : sPlayerbotAIConfig.diffWithPlayer;
