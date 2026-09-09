@@ -16,38 +16,39 @@ namespace
         // Negative = bot is higher level than target.
         int32 levelDiff = int32(target->GetLevel()) - int32(bot->GetLevel());
 
-        // Same level: always willing to engage.
+        // Same level: 95% chance to voluntarily engage.
         if (levelDiff == 0)
-            return 100;
+            return 95;
 
-        // Bot is LOWER level than the target.
+        // Bot is LOWER level than target.
         //
-        // 1 level below  = 90%
-        // 2 levels below = 80%
+        // 1 below  = 85%
+        // 2 below  = 75%
         // ...
-        // 9 levels below = 10%
-        // 10+ below      = 1%
+        // 8 below  = 15%
+        // 9 below  = 5%
+        // 10+ below = 1%
         if (levelDiff > 0)
         {
             if (levelDiff >= 10)
                 return 1;
 
-            return 100 - uint32(levelDiff) * 10;
+            return 95 - uint32(levelDiff) * 10;
         }
 
-        // Bot is HIGHER level than the target.
+        // Bot is HIGHER level than target.
         //
-        // 1 level above  = 95%
-        // 2 levels above = 90%
+        // 1 above  = 90%
+        // 2 above  = 85%
         // ...
-        // 9 levels above = 55%
-        // 10+ above      = 50%
+        // 9 above  = 50%
+        // 10+ above = 45%
         uint32 levelsAbove = uint32(-levelDiff);
 
         if (levelsAbove >= 10)
-            return 50;
+            return 45;
 
-        return 100 - levelsAbove * 5;
+        return 95 - levelsAbove * 5;
     }
 
     bool IsDefendingAgainstPlayer(Player* bot, Player* target)
