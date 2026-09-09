@@ -21,7 +21,11 @@ public:
         if (pet && (0 /* getPetType not in vmangos */ == MINI_PET || 0 /* getPetType not in vmangos */ == SUMMON_PET))
             return false;
 
-        if (!sServerFacade.IsAlive(unit)) return false;
+        if (!sServerFacade.IsAlive(unit))
+            return false;
+
+        if (sServerFacade.GetDistance2d(unit, ai->GetBot()) > 30.0f)
+            return false;
 
         for (std::vector<std::string>::iterator i = auras.begin(); i != auras.end(); ++i)
         {
@@ -122,7 +126,7 @@ Unit* PartyMemberWithoutMyAuraValue::Calculate()
     }
 
     PlayerWithoutMyAuraPredicate predicate(ai, auras);
-    return FindPartyMember(predicate, false, ignoreTank);
+    return FindPartyMember(predicate, true, ignoreTank);
 }
 
 class TankWithoutAuraPredicate : public FindPlayerPredicate, public PlayerbotAIAware
