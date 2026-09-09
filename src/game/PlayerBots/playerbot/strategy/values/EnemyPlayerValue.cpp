@@ -5,6 +5,104 @@
 
 using namespace ai;
 
+namespace
+{
+    uint32 GetPvpEngageChance(Player* bot, Player* target)
+    {
+        if (!bot || !target)
+            return 0;
+
+        // Positive = target is higher level than bot.
+        // Negative = bot is higher level than target.
+        int32 levelDiff = int32(target->GetLevel()) - int32(bot->GetLevel());
+
+        // Same level: always willing to engage.
+        if (levelDiff == 0)
+            return 100;
+
+        // Bot is LOWER level than the target.
+        //
+        // 1 level below  = 90%
+        // 2 levels below = 80%
+        // ...
+        // 9 levels below = 10%
+        // 10+ below      = 1%
+        if (levelDiff > 0)
+        {
+            if (levelDiff >= 10)
+                return 1;
+
+            return 100 - uint32(levelDiff) * 10;
+        }
+
+        // Bot is HIGHER level than the target.
+        //
+        // 1 level above  = 95%
+        // 2 levels above = 90%
+        // ...
+        // 9 levels above = 55%
+        // 10+ above      = 50%
+        uint32 levelsAbove = uint32(-levelDiff);
+
+        if (levelsAbove >= 10)
+            return 50;
+
+        return 100 - levelsAbove * 5;
+    }
+
+    bool IsDefendingAgainstPlayer(Player* bot, Player* target)
+    {
+        if (!bot || !target)
+            return false;
+
+        // Target is already attacking the bot.
+        if (target->GetThreatManager().getThreat(bot) > 0.0f || target->GetVictim() == bot)
+        {
+            return true;
+        }
+
+        // Target is attacking the bot's pet.
+        Pet* pet = bot->GetPet();
+        if (pet)
+        {
+            if (target->GetThreatManager().getThreat(pet) > 0.0f || target->GetVictim() == pet)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    bool ShouldEngagePlayer(Player* bot, Player* target)
+    {
+        if (!bot || !target)
+            return false;
+
+        if (IsDefendingAgainstPlayer(bot, target))
+            return true;
+
+        uint32 engageChance = GetPvpEngageChance(bot, target);
+
+        if (engageChance >= 100)
+            return true;
+
+        uint64 seed = bot->GetObjectGuid().GetRawValue();
+
+        seed ^= target->GetObjectGuid().GetRawValue() + 0x9e3779b97f4a7c15ULL + (seed << 6) + (seed >> 2);
+
+        seed ^= seed >> 30;
+        seed *= 0xbf58476d1ce4e5b9ULL;
+        seed ^= seed >> 27;
+        seed *= 0x94d049bb133111ebULL;
+        seed ^= seed >> 31;
+
+        uint32 roll = uint32(seed % 100ULL) + 1;
+
+        return roll <= engageChance;
+    }
+}
+
 std::list<ObjectGuid> EnemyPlayersValue::Calculate()
 {
     std::list<ObjectGuid> result;
@@ -82,18 +180,25 @@ bool EnemyPlayersValue::IsValid(Unit* target, Player* player)
 void EnemyPlayersValue::ApplyFilter(std::list<ObjectGuid>& targets, bool getOne)
 {
     std::list<ObjectGuid> filteredTargets;
+
     for (const ObjectGuid& targetGuid : targets)
     {
         Unit* target = ai->GetUnit(targetGuid);
-        if (IsValid(target, bot))
-        {
-            filteredTargets.push_back(target->GetObjectGuid());
 
-            if (getOne)
-            {
-                break;
-            }
-        }
+        if (!IsValid(target, bot))
+            continue;
+
+        Player* enemyPlayer = dynamic_cast<Player*>(target);
+        if (!enemyPlayer)
+            continue;
+
+        if (!ShouldEngagePlayer(bot, enemyPlayer))
+            continue;
+
+        filteredTargets.push_back(target->GetObjectGuid());
+
+        if (getOne)
+            break;
     }
 
     targets = filteredTargets;
