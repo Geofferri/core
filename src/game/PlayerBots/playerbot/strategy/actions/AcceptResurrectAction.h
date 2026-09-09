@@ -11,22 +11,24 @@ namespace ai
 
         virtual bool Execute(Event& event) override
         {
-            if (!sServerFacade.IsAlive(bot))
-            {
-                WorldPacket p(event.getPacket());
-                p.rpos(0);
-                ObjectGuid guid;
-                p >> guid;
+            if (sServerFacade.IsAlive(bot) || !bot->IsRessurectRequested())
+                return false;
 
-                WorldPacket packet(CMSG_RESURRECT_RESPONSE, 8+1);
-                packet << guid;
-                packet << uint8(1);                                       // accept
-                bot->GetSession()->HandleResurrectResponseOpcode(MakeTypedPacket<WorldPackets::Misc::ResurrectResponse>(packet)); // queue the packet to get around race condition
-                return true;
-            }
+            ObjectGuid guid = bot->GetResurrector();
 
-            return false;
+            if (guid.IsEmpty())
+                return false;
+
+            WorldPacket packet(CMSG_RESURRECT_RESPONSE, 8 + 1);
+            packet << guid;
+            packet << uint8(1); // accept
+
+            bot->GetSession()->HandleResurrectResponseOpcode(MakeTypedPacket<WorldPackets::Misc::ResurrectResponse>(packet));
+
+            return true;
         }
+
+        virtual bool isUseful() override { return !sServerFacade.IsAlive(bot) && bot->IsRessurectRequested(); }
         
 #ifdef GenerateBotHelp
         virtual std::string GetHelpName() { return "accept resurrect"; } //Must equal iternal name
