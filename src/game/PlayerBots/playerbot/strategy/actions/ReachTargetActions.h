@@ -159,9 +159,60 @@ namespace ai
     };
 
     class ReachMeleeAction : public ReachTargetAction
-	{
+    {
     public:
-        ReachMeleeAction(PlayerbotAI* ai) : ReachTargetAction(ai, "reach melee") {}
+        ReachMeleeAction(PlayerbotAI* ai) : ReachTargetAction(ai, "reach melee", sPlayerbotAIConfig.meleeDistance) {}
+
+        virtual bool isUseful() override
+        {
+            if (ai->HasStrategy("stay", ai->GetState()))
+                return false;
+
+            Unit* target = GetTarget();
+            if (!target)
+                return false;
+
+            if (bot->IsNonMeleeSpellCasted(true, false, true))
+                return false;
+
+            if (!bot->IsWithinLOSInMap(target, true))
+                return true;
+
+            return sServerFacade.IsDistanceGreaterThan(AI_VALUE2(float, "distance", "current target"), sPlayerbotAIConfig.meleeDistance);
+        }
+    };
+
+    class MoveToCombatStanceAction : public MovementAction
+    {
+    public:
+        MoveToCombatStanceAction(PlayerbotAI* ai) : MovementAction(ai, "move to combat stance") {}
+
+        virtual bool Execute(Event& event) override
+        {
+            Unit* target = AI_VALUE(Unit*, "current target");
+            if (!target || !target->IsInWorld())
+                return false;
+
+            return MoveTo(target);
+        }
+
+        virtual bool isUseful() override
+        {
+            if (!MovementAction::isUseful())
+                return false;
+
+            Unit* target = AI_VALUE(Unit*, "current target");
+            if (!target || !target->IsInWorld())
+                return false;
+
+            if (!sServerFacade.IsHostileTo(bot, target))
+                return false;
+
+            if (bot->IsNonMeleeSpellCasted(true, false, true))
+                return false;
+
+            return sServerFacade.IsDistanceGreaterThan(AI_VALUE2(float, "distance", "current target"), sPlayerbotAIConfig.targetPosRecalcDistance);
+        }
     };
 
     class ReachSpellAction : public ReachTargetAction

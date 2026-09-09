@@ -4,8 +4,12 @@
 
 using namespace ai;
 
-void MeleeCombatStrategy::InitCombatTriggers(std::list<TriggerNode*> &triggers)
+void MeleeCombatStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
+    triggers.push_back(new TriggerNode(
+        "combat stance position",
+        NextAction::array(0, new NextAction("move to combat stance", static_cast<float>(ACTION_MOVE) + 1.0f), NULL)));
+
     triggers.push_back(new TriggerNode(
         "enemy out of melee",
         NextAction::array(0, new NextAction("reach melee", ACTION_MOVE), NULL)));

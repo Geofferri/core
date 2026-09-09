@@ -9,11 +9,13 @@ using namespace ai;
 
 Unit* Stance::GetTarget()
 {
-    Unit *target = AI_VALUE(Unit*, GetTargetName());
-    if (target) return target;
+    Unit* target = AI_VALUE(Unit*, GetTargetName());
+    if (target)
+        return target;
 
     ObjectGuid attackTarget = context->GetValue<ObjectGuid>("attack target")->Get();
-    if (attackTarget) ai->GetUnit(attackTarget);
+    if (attackTarget)
+        return ai->GetUnit(attackTarget);
 
     return NULL;
 }
