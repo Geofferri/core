@@ -60,7 +60,7 @@ void WorldBuffStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     triggers.push_back(new TriggerNode(
         "need world buff",
-        NextAction::array(0, new NextAction("world buff", 1.0f), NULL)));
+        NextAction::array(0, new NextAction("world buff", 100.0f), NULL)));
 }
 
 void WorldBuffStrategy::OnStrategyRemoved(BotState state)
