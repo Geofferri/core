@@ -553,6 +553,32 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
     // (the real client prevents this via UI, but bots can have a pending spell from a prior AI action)
     bot->InterruptSpell(CURRENT_GENERIC_SPELL, false);
 
+    if (itemUsed && (IsFood(proto) || IsDrink(proto)))
+    {
+        if (bot->IsInCombat())
+            return false;
+
+        bot->ClearUnitState(UNIT_STATE_CHASE);
+        bot->ClearUnitState(UNIT_STATE_FOLLOW);
+
+        if (sServerFacade.isMoving(bot))
+            ai->StopMoving();
+
+        ai->Unmount();
+
+        bot->SetStandState(UNIT_STAND_STATE_SIT);
+
+        SpellCastTargets targets;
+        targets.setUnitTarget(bot);
+
+        bot->CastItemUseSpell(itemUsed, targets);
+
+        SetDuration(24000);
+
+        RESET_AI_VALUE2(uint32, "item count", itemId);
+        return true;
+    }
+
     // Cast item spells the same way as Player::CastItemUseSpell
     uint8 successCasts = 0;
     Unit* unitTarget = nullptr;
