@@ -266,8 +266,11 @@ namespace ai
     {
     public:
         CurePartyMemberAction(PlayerbotAI* ai, std::string spell, uint32 dispelType) : CastSpellAction(ai, spell), PartyMemberActionNameSupport(spell), dispelType(dispelType) {}
-    
+
+        virtual bool Execute(Event& event) override;
+
     protected:
+        virtual Unit* GetTarget() override;
         virtual std::string GetReachActionName() override { return "reach party member to heal"; }
         virtual std::string getName() override { return PartyMemberActionNameSupport::getName(); }
         virtual std::string GetTargetName() override { return "party member to dispel"; }

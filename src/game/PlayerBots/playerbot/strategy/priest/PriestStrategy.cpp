@@ -650,6 +650,25 @@ void PriestOffdpsRaidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& tr
     OffdpsRaidStrategy::InitNonCombatTriggers(triggers);
 }
 
+void ai::PriestCureStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
+{
+    triggers.push_back(new TriggerNode(
+        "dispel magic",
+        NextAction::array(0, new NextAction("dispel magic", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "dispel magic on party",
+        NextAction::array(0, new NextAction("dispel magic on party", ACTION_EMERGENCY + 6), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cure disease",
+        NextAction::array(0, new NextAction("abolish disease", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "party member cure disease",
+        NextAction::array(0, new NextAction("abolish disease on party", ACTION_EMERGENCY + 6), NULL)));
+}
+
 #endif
 #ifdef MANGOSBOT_ONE // TBC
 

@@ -680,6 +680,33 @@ void PaladinBlessingRaidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>&
         NextAction::array(0, new NextAction("raid blessing", ACTION_NORMAL), NULL)));
 }
 
+void ai::PaladinCureStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
+{
+    triggers.push_back(new TriggerNode(
+        "cleanse cure disease",
+        NextAction::array(0, new NextAction("cleanse disease", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cleanse party member cure disease",
+        NextAction::array(0, new NextAction("cleanse disease on party", ACTION_EMERGENCY + 6), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cleanse cure poison",
+        NextAction::array(0, new NextAction("cleanse poison", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cleanse party member cure poison",
+        NextAction::array(0, new NextAction("cleanse poison on party", ACTION_EMERGENCY + 6), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cleanse cure magic",
+        NextAction::array(0, new NextAction("cleanse magic", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cleanse party member cure magic",
+        NextAction::array(0, new NextAction("cleanse magic on party", ACTION_EMERGENCY + 6), NULL)));
+}
+
 #endif
 #ifdef MANGOSBOT_ONE // TBC
 

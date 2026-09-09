@@ -1363,6 +1363,8 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
                 reactionEngine->addStrategy("enhancement");
             }
 
+            reactionEngine->addStrategy("cure");
+
             break;
         }
 
@@ -1403,22 +1405,24 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
         }
 
         case CLASS_MAGE:
-        {
-            if (tab == 0)
             {
-                reactionEngine->addStrategy("arcane");
-            }
-            else if (tab == 1)
-            {
-                reactionEngine->addStrategy("fire");
-            }
-            else
-            {
-                reactionEngine->addStrategy("frost");
-            }
+                if (tab == 0)
+                {
+                    reactionEngine->addStrategy("arcane");
+                }
+                else if (tab == 1)
+                {
+                    reactionEngine->addStrategy("fire");
+                }
+                else
+                {
+                    reactionEngine->addStrategy("frost");
+                }
 
-            break;
-        }
+                reactionEngine->addStrategy("cure");
+
+                break;
+            }
 
         case CLASS_PALADIN:
         {
@@ -1434,6 +1438,8 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
             {
                 reactionEngine->addStrategy("retribution");
             }
+
+            reactionEngine->addStrategy("cure");
 
             break;
         }
@@ -1478,6 +1484,8 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
                 reactionEngine->addStrategy("balance");
             }
 
+            reactionEngine->addStrategy("cure");
+
             break;
         }
 
@@ -1513,6 +1521,8 @@ void AiFactory::AddDefaultReactionStrategies(Player* player, PlayerbotAI* const 
             {
                 reactionEngine->addStrategy("shadow");
             }
+
+            reactionEngine->addStrategy("cure");
 
             break;
         }

@@ -23,11 +23,12 @@ namespace ai
 		virtual std::string GetTargetName() override { return "current target"; }
     };
 
-    class PartyMemberNeedCureTrigger : public NeedCureTrigger 
+    class PartyMemberNeedCureTrigger : public NeedCureTrigger
     {
     public:
-        PartyMemberNeedCureTrigger(PlayerbotAI* ai, std::string spell, uint32 dispelType) : NeedCureTrigger(ai, spell, dispelType) {}
-		virtual Value<Unit*>* GetTargetValue() override;
+        PartyMemberNeedCureTrigger(PlayerbotAI* ai, std::string spell, uint32 dispelType) : NeedCureTrigger(ai, spell, dispelType, 1) {}
+
+        virtual Value<Unit*>* GetTargetValue() override;
     };
 
     class NeedWorldBuffTrigger : public Trigger 

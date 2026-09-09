@@ -572,6 +572,25 @@ void DruidOffdpsRaidStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& tri
     OffdpsRaidStrategy::InitNonCombatTriggers(triggers);
 }
 
+void ai::DruidCureStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
+{
+    triggers.push_back(new TriggerNode(
+        "remove curse",
+        NextAction::array(0, new NextAction("remove curse", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "party member remove curse",
+        NextAction::array(0, new NextAction("remove curse on party", ACTION_EMERGENCY + 6), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "cure poison",
+        NextAction::array(0, new NextAction("abolish poison", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "party member cure poison",
+        NextAction::array(0, new NextAction("abolish poison on party", ACTION_EMERGENCY + 6), NULL)));
+}
+
 #endif
 #ifdef MANGOSBOT_ONE // TBC
 

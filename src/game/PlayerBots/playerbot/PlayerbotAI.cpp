@@ -5692,31 +5692,34 @@ bool PlayerbotAI::IsInterruptableSpellCasting(Unit* target, std::string spell, u
 bool PlayerbotAI::HasAuraToDispel(Unit* target, uint32 dispelType)
 {
     bool isFriend = sServerFacade.IsFriendlyTo(bot, target);
-	for (uint32 type = SPELL_AURA_NONE; type < TOTAL_AURAS; ++type)
-	{
-		Unit::AuraList const& auras = target->GetAurasByType((AuraType)type);
-		for (Unit::AuraList::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
-		{
-			const Aura* aura = *itr;
-			const SpellEntry* entry = aura->GetSpellProto();
-			uint32 spellId = entry->Id;
+
+    for (uint32 type = SPELL_AURA_NONE; type < TOTAL_AURAS; ++type)
+    {
+        Unit::AuraList const& auras = target->GetAurasByType((AuraType)type);
+
+        for (Unit::AuraList::const_iterator itr = auras.begin(); itr != auras.end(); ++itr)
+        {
+            const Aura* aura = *itr;
+            const SpellEntry* entry = aura->GetSpellProto();
+            uint32 spellId = entry->Id;
 
             bool isPositiveSpell = IsPositiveSpell(spellId);
-            bool isPositiveAuraEffect = entry->IsPositiveEffect(SpellEffectIndex(aura->GetEffIndex()));
-            if ((isPositiveSpell || isPositiveAuraEffect) && isFriend)
-				continue;
 
-            if (!isPositiveSpell && !isPositiveAuraEffect && !isFriend)
-				continue;
+            if (isPositiveSpell && isFriend)
+                continue;
 
-			if (sPlayerbotAIConfig.dispelAuraDuration && aura->GetAuraDuration() && aura->GetAuraDuration() < (int32)sPlayerbotAIConfig.dispelAuraDuration)
-			    return false;
+            if (!isPositiveSpell && !isFriend)
+                continue;
 
-			if (canDispel(entry, dispelType))
-				return true;
-		}
-	}
-	return false;
+            if (sPlayerbotAIConfig.dispelAuraDuration && aura->GetAuraDuration() && aura->GetAuraDuration() < (int32)sPlayerbotAIConfig.dispelAuraDuration)
+                continue;
+
+            if (canDispel(entry, dispelType))
+                return true;
+        }
+    }
+
+    return false;
 }
 
 #ifndef WIN32

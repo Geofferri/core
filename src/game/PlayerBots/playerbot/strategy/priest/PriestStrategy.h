@@ -174,6 +174,7 @@ namespace ai
     protected:
         virtual void InitCombatTriggers(std::list<TriggerNode*>& triggers) override;
         virtual void InitNonCombatTriggers(std::list<TriggerNode*>& triggers) override;
+        virtual void InitReactionTriggers(std::list<TriggerNode*>& triggers) override;
     };
 
     class PriestCurePvpStrategy : public CurePvpStrategy

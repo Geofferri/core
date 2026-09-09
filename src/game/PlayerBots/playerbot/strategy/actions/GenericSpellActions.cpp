@@ -766,3 +766,38 @@ bool CastItemTargetAction::HasSpellCooldown(uint32 itemId)
 
     return false;
 }
+
+Unit* CurePartyMemberAction::GetTarget()
+{
+    Value<Unit*>* targetValue = ai->GetAiObjectContext()->GetValue<Unit*>(GetTargetName(), GetTargetQualifier());
+
+    if (!targetValue)
+        return nullptr;
+
+    Unit* target = targetValue->Get();
+
+    if (!target || target == bot || !ai->HasAuraToDispel(target, dispelType))
+    {
+        targetValue->Reset();
+        target = targetValue->Get();
+    }
+
+    if (!target || target == bot || !ai->HasAuraToDispel(target, dispelType))
+    {
+        return nullptr;
+    }
+
+    return target;
+}
+
+bool CurePartyMemberAction::Execute(Event& event)
+{
+    bool result = CastSpellAction::Execute(event);
+
+    Value<Unit*>* targetValue = ai->GetAiObjectContext()->GetValue<Unit*>(GetTargetName(), GetTargetQualifier());
+
+    if (targetValue)
+        targetValue->Reset();
+
+    return result;
+}

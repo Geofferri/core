@@ -467,6 +467,17 @@ void MageCureStrategy::InitNonCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("remove curse on party", ACTION_NORMAL), NULL)));
 }
 
+void ai::MageCureStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
+{
+    triggers.push_back(new TriggerNode(
+        "remove curse",
+        NextAction::array(0, new NextAction("remove curse", ACTION_EMERGENCY + 7), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "remove curse on party",
+        NextAction::array(0, new NextAction("remove curse on party", ACTION_EMERGENCY + 6), NULL)));
+}
+
 void MageCurePvpStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
     CurePvpStrategy::InitCombatTriggers(triggers);
