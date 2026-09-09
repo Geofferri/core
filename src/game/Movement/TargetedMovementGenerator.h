@@ -57,7 +57,10 @@ class TargetedMovementGeneratorMedium
 
         Unit* GetTarget() const { return i_target.getTarget(); }
 
-        void UnitSpeedChanged() override { m_bRecalculateTravel=true; }
+        float GetOffset() const { return m_fOffset; }
+        float GetAngle() const { return m_fAngle; }
+
+        void UnitSpeedChanged() override { m_bRecalculateTravel = true; }
         void UpdateFinalDistance(float fDistance) override;
         bool IsFarEnoughToMoveStationaryFollower(T&) const;
 

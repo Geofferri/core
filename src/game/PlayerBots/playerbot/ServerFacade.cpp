@@ -77,21 +77,97 @@ FactionTemplateEntry const* ServerFacade::GetFactionTemplateEntry(Unit *unit) { 
 
 Unit* ServerFacade::GetChaseTarget(Unit* target)
 {
-    MotionMaster* mm = target->GetMotionMaster();
-    if (!mm || !mm->GetCurrent() || mm->GetCurrent()->GetMovementGeneratorType() != CHASE_MOTION_TYPE)
+    if (!target)
         return nullptr;
-    return static_cast<ChaseMovementGenerator<Creature> const*>(mm->GetCurrent())->GetTarget();
+
+    MotionMaster* mm = target->GetMotionMaster();
+    if (!mm || !mm->GetCurrent())
+        return nullptr;
+
+    MovementGenerator const* movement = mm->GetCurrent();
+    MovementGeneratorType type = movement->GetMovementGeneratorType();
+
+    if (target->IsPlayer())
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Player> const*>(movement)->GetTarget();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Player> const*>(movement)->GetTarget();
+    }
+    else
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Creature> const*>(movement)->GetTarget();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Creature> const*>(movement)->GetTarget();
+    }
+
+    return nullptr;
 }
 
 float ServerFacade::GetChaseAngle(Unit* target)
 {
-    // vmangos ChaseMovementGenerator doesn't expose GetAngle()
+    if (!target)
+        return 0.0f;
+
+    MotionMaster* mm = target->GetMotionMaster();
+    if (!mm || !mm->GetCurrent())
+        return 0.0f;
+
+    MovementGenerator const* movement = mm->GetCurrent();
+    MovementGeneratorType type = movement->GetMovementGeneratorType();
+
+    if (target->IsPlayer())
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Player> const*>(movement)->GetAngle();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Player> const*>(movement)->GetAngle();
+    }
+    else
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Creature> const*>(movement)->GetAngle();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Creature> const*>(movement)->GetAngle();
+    }
+
     return 0.0f;
 }
 
 float ServerFacade::GetChaseOffset(Unit* target)
 {
-    // vmangos ChaseMovementGenerator doesn't expose GetOffset()
+    if (!target)
+        return 0.0f;
+
+    MotionMaster* mm = target->GetMotionMaster();
+    if (!mm || !mm->GetCurrent())
+        return 0.0f;
+
+    MovementGenerator const* movement = mm->GetCurrent();
+    MovementGeneratorType type = movement->GetMovementGeneratorType();
+
+    if (target->IsPlayer())
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Player> const*>(movement)->GetOffset();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Player> const*>(movement)->GetOffset();
+    }
+    else
+    {
+        if (type == CHASE_MOTION_TYPE)
+            return static_cast<ChaseMovementGenerator<Creature> const*>(movement)->GetOffset();
+
+        if (type == FOLLOW_MOTION_TYPE)
+            return static_cast<FollowMovementGenerator<Creature> const*>(movement)->GetOffset();
+    }
+
     return 0.0f;
 }
 

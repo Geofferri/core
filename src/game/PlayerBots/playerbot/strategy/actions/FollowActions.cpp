@@ -7,6 +7,7 @@
 #include "playerbot/strategy/values/FreeMoveValues.h"
 #include "playerbot/TravelMgr.h"
 #include "playerbot/LootObjectStack.h"
+#include "TargetedMovementGenerator.h"
 
 using namespace ai;
 
@@ -89,9 +90,21 @@ bool FollowAction::isUseful()
         return true;
     }
 
-    if (followTarget && sServerFacade.GetChaseTarget(bot) && sServerFacade.GetChaseTarget(bot)->GetObjectGuid() == followTarget->GetObjectGuid() && formation->GetAngle() == sServerFacade.GetChaseAngle(bot) && formation->GetOffset() == sServerFacade.GetChaseOffset(bot))
+    if (followTarget)
     {
-        return false;
+        MotionMaster* motionMaster = bot->GetMotionMaster();
+
+        if (motionMaster && motionMaster->GetCurrent() && motionMaster->GetCurrent()->GetMovementGeneratorType() == FOLLOW_MOTION_TYPE)
+        {
+            FollowMovementGenerator<Player> const* follow = static_cast<FollowMovementGenerator<Player> const*>(motionMaster->GetCurrent());
+
+            Unit* currentTarget = follow->GetTarget();
+
+            if (currentTarget && currentTarget->GetObjectGuid() == followTarget->GetObjectGuid())
+            {
+                return false;
+            }
+        }
     }
 
     return true;
