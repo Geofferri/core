@@ -105,6 +105,38 @@ bool ChangeReactionStrategyAction::Execute(Event& event)
 
     ai->ChangeStrategy(text, BotState::BOT_STATE_REACTION);
 
+    if (!sPlayerbotAIConfig.bExplicitDbStoreSave && event.getSource() == "react")
+    {
+        std::vector<std::string> splitted = split(text, ',');
+
+        bool changed = false;
+
+        for (std::vector<std::string>::iterator i = splitted.begin(); i != splitted.end(); ++i)
+        {
+            if (i->empty())
+                continue;
+
+            switch ((*i)[0])
+            {
+            case '+':
+            case '-':
+            case '~':
+                changed = true;
+                break;
+            }
+
+            if (changed)
+                break;
+        }
+
+        if (changed)
+        {
+            CharacterDatabase.BeginTransaction();
+            sPlayerbotDbStore.Save(ai);
+            CharacterDatabase.CommitTransaction();
+        }
+    }
+
     if (text.find("?") != std::string::npos)
     {
         ai->PrintStrategies(requester, BotState::BOT_STATE_REACTION);
