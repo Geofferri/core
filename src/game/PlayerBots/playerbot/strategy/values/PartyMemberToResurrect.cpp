@@ -38,7 +38,7 @@ public:
 				return false;
 		}
 
-        return player && !false /* isRessurectRequested not in vmangos */ && sServerFacade.GetDistance2d(ai->GetBot(), player) <= ai->GetRange("spell") && sServerFacade.GetDeathState(player) == CORPSE && !value->IsTargetOfSpellCast(player, predicate);
+        return player && sServerFacade.GetDeathState(player) == CORPSE && !value->IsTargetOfSpellCast(player, predicate);
     }
 
 private:
