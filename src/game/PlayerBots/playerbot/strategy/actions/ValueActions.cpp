@@ -54,37 +54,43 @@ Player* FindGroupPlayerByName(Player* player, const std::string& playerName)
 bool SetFocusHealTargetsAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
+
     if (ai->IsHeal(bot) || ai->HasStrategy("offheal", BotState::BOT_STATE_COMBAT))
     {
         const std::string param = LowercaseString(event.getParam());
+
         if (!param.empty())
         {
             std::list<ObjectGuid> focusHealTargets = AI_VALUE(std::list<ObjectGuid>, "focus heal targets");
+
+            bool strictFocusHeal = AI_VALUE(bool, "strict focus heal");
 
             // Query current focus targets
             if (param.find('?') != std::string::npos)
             {
                 std::stringstream ss;
+
                 if (focusHealTargets.empty())
                 {
                     ss << "I don't have any focus heal targets";
                 }
                 else
                 {
-                    ss << "My focus heal targets are ";
+                    if (strictFocusHeal)
+                        ss << "My STRICT focus heal targets are ";
+                    else
+                        ss << "My focus heal targets are ";
+
                     for (const ObjectGuid& focusTargetGuid : focusHealTargets)
                     {
                         Unit* focusHealTarget = ai->GetUnit(focusTargetGuid);
+
                         if (focusHealTarget)
                         {
                             if (focusTargetGuid == focusHealTargets.back())
-                            {
                                 ss << focusHealTarget->GetName();
-                            }
                             else
-                            {
                                 ss << focusHealTarget->GetName() << ", ";
-                            }
                         }
                     }
                 }
@@ -93,25 +99,30 @@ bool SetFocusHealTargetsAction::Execute(Event& event)
                 return true;
             }
             else if (param == "none" || param == "unset" || param == "clear")
-            {   
+            {
                 focusHealTargets.clear();
+
                 SET_AI_VALUE(std::list<ObjectGuid>, "focus heal targets", focusHealTargets);
+
+                SET_AI_VALUE(bool, "strict focus heal", false);
+
                 ai->ChangeStrategy("-focus heal targets", BotState::BOT_STATE_COMBAT);
+
                 ai->TellPlayerNoFacing(requester, "Removed focus heal targets");
+
                 return true;
             }
             else
             {
-                // Multiple focus heal targets
                 std::vector<std::string> targetNames;
+
                 if (param.find(',') != std::string::npos)
                 {
                     std::string targetName;
                     std::stringstream ss(param);
+
                     while (std::getline(ss, targetName, ','))
-                    {
                         targetNames.push_back(targetName);
-                    }
                 }
                 else
                 {
@@ -122,48 +133,112 @@ bool SetFocusHealTargetsAction::Execute(Event& event)
                 {
                     if (bot->GetGroup())
                     {
+                        bool hasStrictAdd = false;
+                        bool hasNormalAdd = false;
+
                         for (const std::string& targetName : targetNames)
                         {
-                            const bool add = targetName.find("+") != std::string::npos;
-                            const bool remove = targetName.find("-") != std::string::npos;
-                            if (add || remove)
+                            if (targetName.rfind("++", 0) == 0)
+                                hasStrictAdd = true;
+                            else if (targetName.rfind("+", 0) == 0)
+                                hasNormalAdd = true;
+                        }
+
+                        if (hasStrictAdd && hasNormalAdd)
+                        {
+                            ai->TellPlayerNoFacing(requester, "Please do not mix + and ++ focus heal targets");
+
+                            return false;
+                        }
+
+                        // A regular + command always returns focus heal to its original, non-strict behavior.
+                        if (hasNormalAdd)
+                            strictFocusHeal = false;
+
+                        bool strictListReset = false;
+
+                        for (const std::string& targetName : targetNames)
+                        {
+                            const bool strictAdd = targetName.rfind("++", 0) == 0;
+
+                            const bool add = !strictAdd && targetName.rfind("+", 0) == 0;
+
+                            const bool remove = targetName.rfind("-", 0) == 0;
+
+                            if (strictAdd || add || remove)
                             {
-                                const std::string playerName = targetName.substr(1);
+                                const size_t prefixLength = strictAdd ? 2 : 1;
+
+                                const std::string playerName = targetName.substr(prefixLength);
+
                                 const Player* target = FindGroupPlayerByName(bot, playerName);
+
                                 if (target)
                                 {
                                     const ObjectGuid& targetGuid = target->GetObjectGuid();
-                                    if (add)
+
+                                    if (strictAdd)
                                     {
-                                        // Check if the target exists already on the list
+                                        // The first valid ++ target switches into hard-focus mode and replaces the old focus list.
+                                        if (!strictListReset)
+                                        {
+                                            focusHealTargets.clear();
+                                            strictFocusHeal = true;
+                                            strictListReset = true;
+                                        }
+
                                         if (std::find(focusHealTargets.begin(), focusHealTargets.end(), targetGuid) == focusHealTargets.end())
                                         {
                                             focusHealTargets.push_back(targetGuid);
                                         }
 
-                                        std::stringstream message; message << "Added " << playerName << " to focus heal targets";
+                                        std::stringstream message;
+                                        message << "Added " << playerName << " as STRICT focus heal target";
+
+                                        ai->TellPlayerNoFacing(requester, message.str());
+                                    }
+                                    else if (add)
+                                    {
+                                        if (std::find(focusHealTargets.begin(), focusHealTargets.end(), targetGuid) == focusHealTargets.end())
+                                        {
+                                            focusHealTargets.push_back(targetGuid);
+                                        }
+
+                                        std::stringstream message;
+                                        message << "Added " << playerName << " to focus heal targets";
+
                                         ai->TellPlayerNoFacing(requester, message.str());
                                     }
                                     else
                                     {
                                         focusHealTargets.remove(targetGuid);
-                                        std::stringstream message; message << "Removed " << playerName << " from focus heal targets";
+
+                                        std::stringstream message;
+                                        message << "Removed " << playerName << " from focus heal targets";
+
                                         ai->TellPlayerNoFacing(requester, message.str());
                                     }
                                 }
                                 else
                                 {
-                                    std::stringstream message; message << "I'm not in a group with " << playerName;
+                                    std::stringstream message;
+                                    message << "I'm not in a group with " << playerName;
+
                                     ai->TellPlayerNoFacing(requester, message.str());
                                 }
                             }
                             else
                             {
-                                ai->TellPlayerNoFacing(requester, "Please specify a + for add or - to remove a target");
+                                ai->TellPlayerNoFacing(requester, "Please specify + to add, ++ for strict add, or - to remove a target");
                             }
                         }
 
+                        if (focusHealTargets.empty())
+                            strictFocusHeal = false;
+
                         SET_AI_VALUE(std::list<ObjectGuid>, "focus heal targets", focusHealTargets);
+
+                        SET_AI_VALUE(bool, "strict focus heal", strictFocusHeal);
 
                         if (focusHealTargets.empty())
                         {

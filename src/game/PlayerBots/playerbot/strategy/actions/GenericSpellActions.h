@@ -205,6 +205,7 @@ namespace ai
         virtual bool isUseful() override;
 
     protected:
+        bool IsStrictFocusHealTargetAllowed();
         virtual ActionThreatType getThreatType() override { return ActionThreatType::ACTION_THREAT_AOE; }
         virtual std::string GetTargetName() override { return "self target"; }
         virtual std::string GetReachActionName() override { return "reach party member to heal"; }

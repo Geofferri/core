@@ -279,6 +279,9 @@ bool CastHealingSpellAction::isUseful()
     if (!CastAuraSpellAction::isUseful())
         return false;
 
+    if (!IsStrictFocusHealTargetAllowed())
+        return false;
+
     if (bot->InBattleGround())
         return true;
 
@@ -335,7 +338,10 @@ bool CastEnchantItemAction::isPossible()
 
 bool CastAoeHealSpellAction::isUseful()
 {
-    return CastSpellAction::isUseful();
+    if (!CastSpellAction::isUseful())
+        return false;
+
+    return IsStrictFocusHealTargetAllowed();
 }
 
 bool HealHotPartyMemberAction::isUseful()
@@ -846,4 +852,22 @@ bool CurePartyMemberAction::Execute(Event& event)
         targetValue->Reset();
 
     return result;
+}
+
+bool CastHealingSpellAction::IsStrictFocusHealTargetAllowed()
+{
+    if (!AI_VALUE(bool, "strict focus heal"))
+        return true;
+
+    Unit* target = GetTarget();
+
+    if (!target)
+        return false;
+
+    const std::list<ObjectGuid> focusHealTargets = AI_VALUE(std::list<ObjectGuid>, "focus heal targets");
+
+    if (focusHealTargets.empty())
+        return false;
+
+    return std::find(focusHealTargets.begin(), focusHealTargets.end(), target->GetObjectGuid()) != focusHealTargets.end();
 }

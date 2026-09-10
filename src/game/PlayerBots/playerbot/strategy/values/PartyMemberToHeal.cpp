@@ -43,7 +43,10 @@ Unit* PartyMemberToHeal::Calculate()
 {
     std::vector<Unit*> needHeals;
     std::vector<Unit*> tankTargets;
-    if (bot->GetSelectionGuid())
+
+    const bool strictFocusHeal = AI_VALUE(bool, "strict focus heal");
+
+    if (!strictFocusHeal && bot->GetSelectionGuid())
     {
         Unit* target = ai->GetUnit(bot->GetSelectionGuid());
         if (target &&
@@ -56,12 +59,16 @@ Unit* PartyMemberToHeal::Calculate()
         }
     }
 
-    if (GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target"))
+    if (!strictFocusHeal)
     {
-        Unit* target = rpgTarget.GetCreature(bot->GetInstanceId());
-        if (target && sServerFacade.IsFriendlyTo(bot, target) && target->GetHealthPercent() < 100)
+        if (GuidPosition rpgTarget = AI_VALUE(GuidPosition, "rpg target"))
         {
-            needHeals.push_back(target);
+            Unit* target = rpgTarget.GetCreature(bot->GetInstanceId());
+
+            if (target && sServerFacade.IsFriendlyTo(bot, target) && target->GetHealthPercent() < 100)
+            {
+                needHeals.push_back(target);
+            }
         }
     }
 
