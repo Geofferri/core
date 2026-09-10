@@ -312,6 +312,48 @@ void PlayerbotAI::UpdateAI(uint32 elapsed, bool minimal)
         isWaiting = false;
     }
 
+    // Interrupt eating/drinking if the group master moves too far away.
+    if (aiInternalUpdateDelay >= 100U && bot->GetGroup() && bot->IsSittingDown() && !sServerFacade.IsInCombat(bot))
+    {
+        const Action* lastAction = GetLastExecutedAction(BotState::BOT_STATE_NON_COMBAT);
+
+        if (lastAction)
+        {
+            std::string lastActionName = const_cast<Action*>(lastAction)->getName();
+
+            if (lastActionName == "food" || lastActionName == "drink")
+            {
+                Player* groupMaster = GetGroupMaster();
+
+                if (groupMaster && groupMaster != bot && IsSafe(groupMaster))
+                {
+                    float maxRegenDistance = 0.0f;
+
+                    if (HasStrategy("wander", BotState::BOT_STATE_NON_COMBAT))
+                    {
+                        maxRegenDistance = GetRange("wandermax");
+                    }
+                    else if (HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT))
+                    {
+                        maxRegenDistance = GetRange("follow") + 20.0f;
+                    }
+
+                    if (maxRegenDistance > 0.0f)
+                    {
+                        float masterDistance = sServerFacade.GetDistance2d(bot, groupMaster);
+
+                        if (sServerFacade.IsDistanceGreaterThan(masterDistance, maxRegenDistance))
+                        {
+                            bot->SetStandState(UNIT_STAND_STATE_STAND);
+
+                            ResetAIInternalUpdateDelay();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     // cancel logout in combat
     if (bot->GetSession()->IsLogingOut())
     {
