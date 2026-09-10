@@ -74,8 +74,8 @@ bool SeeSpellAction::Execute(Event& event)
     SpellEntry const* pSpellInfo = sServerFacade.LookupSpellInfo(spellId);
 
     SpellCastTargets targets;
+    p >> targets;
 
-    /* p >> targets; TODO fix SeeSpellAction */;
     WorldPosition spellPosition(requester->GetMapId(), targets.m_destX, targets.m_destY, targets.m_destZ);
     SET_AI_VALUE(WorldPosition, "see spell location", spellPosition);
 

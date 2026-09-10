@@ -372,11 +372,17 @@ void WorldSession::QueueBinaryPacket(std::unique_ptr<WorldPacket> const& binaryP
         {
             sLog.Out(LOG_BASIC, LOG_LVL_ERROR, "[SESSION] Received unhandled opcode %s (0x%.4X) will be skipped", opHandle.name, binaryPacket->GetOpcode());
         }
+
         return;
     }
 
+    // Playerbot AI incoming packet handling
+    if (GetPlayer() && GetPlayer()->GetPlayerbotMgr())
+        GetPlayer()->GetPlayerbotMgr()->HandleMasterIncomingPacket(*binaryPacket);
+
     // parsing the packet
     std::unique_ptr<ClientPacket const> clientPacket = opHandle.impl->readPacket(*binaryPacket);
+
     VerifyPacketWasCorrectlyRead(*binaryPacket, *clientPacket);
 
     QueuePacket(std::move(clientPacket));
