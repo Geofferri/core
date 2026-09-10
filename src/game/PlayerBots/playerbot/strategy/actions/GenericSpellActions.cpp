@@ -274,6 +274,52 @@ bool CastAuraSpellAction::isUseful()
     return CastSpellAction::isUseful() && !ai->HasAura(GetSpellName(), GetTarget(), false, isOwner);
 }
 
+bool CastHealingSpellAction::isUseful()
+{
+    if (!CastAuraSpellAction::isUseful())
+        return false;
+
+    if (bot->InBattleGround())
+        return true;
+
+    if (GetTargetName() != "self target")
+        return true;
+
+    if (!ai->IsHeal(bot))
+        return true;
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return true;
+
+    Unit* partyTarget = AI_VALUE(Unit*, "party member to heal");
+
+    if (!partyTarget || !partyTarget->IsPlayer())
+        return true;
+
+    Player* player = static_cast<Player*>(partyTarget);
+
+    if (!group->IsMember(player->GetObjectGuid()))
+        return true;
+
+    if (!ai->IsTank(player))
+        return true;
+
+    const float tankHealth = player->GetHealthPercent();
+
+    if (tankHealth >= sPlayerbotAIConfig.almostFullHealth)
+        return true;
+
+    constexpr float TANK_HEAL_PRIORITY_WINDOW = 10.0f;
+
+    const float selfHealth = bot->GetHealthPercent();
+
+    if (tankHealth <= selfHealth + TANK_HEAL_PRIORITY_WINDOW)
+        return false;
+
+    return true;
+}
+
 bool CastMeleeAoeSpellAction::isUseful()
 {
     return CastSpellAction::isUseful() && sServerFacade.IsDistanceLessOrEqualThan(AI_VALUE2(float, "distance", GetTargetName()), radius);

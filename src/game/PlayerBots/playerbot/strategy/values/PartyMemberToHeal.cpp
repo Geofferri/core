@@ -126,8 +126,48 @@ Unit* PartyMemberToHeal::Calculate()
         needHeals = tankTargets;
     }
 
-    bool preHealing = ai->HasStrategy("preheal", BotState::BOT_STATE_COMBAT);
+        bool preHealing = ai->HasStrategy("preheal", BotState::BOT_STATE_COMBAT);
+
     sort(needHeals.begin(), needHeals.end(), [preHealing](const Unit* u1, const Unit* u2) { return compareByMissingHealth(u1, u2, preHealing); });
+
+    if (!bot->InBattleGround() && bot->GetGroup())
+    {
+        constexpr float TANK_HEAL_PRIORITY_WINDOW = 10.0f;
+
+        float lowestHealth = 100.0f;
+
+        for (Unit* unit : needHeals)
+        {
+            if (!unit)
+                continue;
+
+            const float health = unit->GetHealthPercent();
+
+            if (health < lowestHealth)
+                lowestHealth = health;
+        }
+
+        const float tankPriorityCutoff = lowestHealth + TANK_HEAL_PRIORITY_WINDOW;
+
+        Group* group = bot->GetGroup();
+
+        std::stable_partition(needHeals.begin(), needHeals.end(),
+                              [this, group, tankPriorityCutoff](Unit* unit)
+                              {
+                                  if (!unit || !unit->IsPlayer())
+                                      return false;
+
+                                  Player* player = static_cast<Player*>(unit);
+
+                                  if (!group->IsMember(player->GetObjectGuid()))
+                                      return false;
+
+                                  if (!ai->IsTank(player))
+                                      return false;
+
+                                  return player->GetHealthPercent() <= tankPriorityCutoff;
+                              });
+    }
 
     int healerIndex = 0;
     if (!partyMembers.empty())
