@@ -426,6 +426,8 @@ namespace ai
             creators["has area debuff"] = [](PlayerbotAI* ai) { return new HasAreaDebuffValue(ai); };
             creators["combat start time"] = [](PlayerbotAI* ai) { return new CombatStartTimeValue(ai); };
             creators["wait for attack time"] = [](PlayerbotAI* ai) { return new WaitForAttackTimeValue(ai); };
+            creators["heal rotate time"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 60, "heal rotate time"); };
+            creators["heal rotate last heal time"] = [](PlayerbotAI* ai) { return new TimeManualSetValue(ai, 0, "heal rotate last heal time"); };
 
             creators["mc runes"] = [](PlayerbotAI* ai) { return new MCRunesValue(ai); };
             creators["suppression devices"] = [](PlayerbotAI* ai) { return new SuppressionDevicesValue(ai); };

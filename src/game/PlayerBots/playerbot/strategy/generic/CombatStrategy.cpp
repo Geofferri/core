@@ -169,3 +169,145 @@ void HealInterruptStrategy::InitReactionTriggers(std::list<TriggerNode*>& trigge
 {
     InitCombatTriggers(triggers);
 }
+
+bool HealRotateStrategy::IsActive(PlayerbotAI* ai) { return ai && ai->IsStateActive(BotState::BOT_STATE_COMBAT) && ai->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT); }
+
+std::string HealRotateStrategy::GetBiggestHealSpell(PlayerbotAI* ai)
+{
+    if (!ai || !ai->GetBot())
+        return "";
+
+    switch (ai->GetBot()->GetClass())
+    {
+    case CLASS_PRIEST:
+        return "greater heal";
+
+    case CLASS_DRUID:
+        return "healing touch";
+
+    case CLASS_PALADIN:
+        return "holy light";
+
+    case CLASS_SHAMAN:
+        return "healing wave";
+
+    default:
+        return "";
+    }
+}
+
+bool HealRotateStrategy::IsBiggestDirectHeal(PlayerbotAI* ai, const std::string& spellName)
+{
+    const std::string biggestHeal = GetBiggestHealSpell(ai);
+
+    return !biggestHeal.empty() && spellName == biggestHeal;
+}
+
+bool HealRotateStrategy::CanHealNow(PlayerbotAI* ai)
+{
+    if (!IsActive(ai))
+        return true;
+
+    Player* bot = ai->GetBot();
+    if (!bot)
+        return false;
+
+    Group* group = bot->GetGroup();
+    if (!group)
+        return false;
+
+    const int32 rotateTime = ai->GetAiObjectContext()->GetValue<int32>("heal rotate time")->Get();
+
+    if (rotateTime <= 0)
+        return false;
+
+    uint32 healerCount = 0;
+    uint32 rotationIndex = 0;
+    bool foundBot = false;
+
+    time_t sharedCombatStart = 0;
+
+    for (GroupReference* gref = group->GetFirstMember(); gref; gref = gref->next())
+    {
+        Player* member = gref->getSource();
+
+        if (!member)
+            continue;
+
+        PlayerbotAI* memberAI = member->GetPlayerbotAI();
+
+        if (!memberAI)
+            continue;
+
+        if (memberAI->IsRealPlayer())
+            continue;
+
+        if (!memberAI->IsHeal(member))
+            continue;
+
+        if (!memberAI->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
+        {
+            continue;
+        }
+
+        if (member == bot)
+        {
+            rotationIndex = healerCount;
+            foundBot = true;
+        }
+
+        ++healerCount;
+
+        const time_t combatStart = memberAI->GetCombatStartTime();
+
+        if (combatStart > 0 && (sharedCombatStart == 0 || combatStart < sharedCombatStart))
+        {
+            sharedCombatStart = combatStart;
+        }
+    }
+
+    if (!foundBot || healerCount == 0 || sharedCombatStart == 0)
+    {
+        return false;
+    }
+
+    const time_t now = time(0);
+
+    if (now < sharedCombatStart)
+        return false;
+
+    const uint32 elapsed = static_cast<uint32>(now - sharedCombatStart);
+
+    const uint32 cycle = elapsed / static_cast<uint32>(rotateTime);
+
+    const uint32 cyclePosition = elapsed % static_cast<uint32>(rotateTime);
+
+    uint32 activeHealer = static_cast<uint32>((static_cast<uint64>(cyclePosition) * healerCount) / static_cast<uint32>(rotateTime));
+
+    if (activeHealer >= healerCount)
+        activeHealer = healerCount - 1;
+
+    if (activeHealer != rotationIndex)
+        return false;
+
+    const time_t cycleStart = sharedCombatStart + static_cast<time_t>(static_cast<uint64>(cycle) * static_cast<uint32>(rotateTime));
+
+    const time_t lastHeal = ai->GetAiObjectContext()->GetValue<time_t>("heal rotate last heal time")->Get();
+
+    if (lastHeal >= cycleStart && lastHeal <= now)
+    {
+        return false;
+    }
+
+    return true;
+}
+
+void HealRotateStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
+{
+    const std::string biggestHeal = GetBiggestHealSpell(ai);
+
+    if (biggestHeal.empty())
+        return;
+
+    triggers.push_back(new TriggerNode("timer", NextAction::array(0, new NextAction(biggestHeal + " on party", ACTION_EMERGENCY + 5), NULL)));
+}

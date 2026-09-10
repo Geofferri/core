@@ -46,6 +46,7 @@
 #include "generic/WanderStrategy.h"
 #include "generic/ConsumableStrategy.h"
 #include "generic/WorldBuffTravelStrategy.h"
+#include "generic/CombatStrategy.h"
 
 #include "generic/DungeonStrategy.h"
 #include "generic/OnyxiasLairDungeonStrategies.h"
@@ -152,6 +153,7 @@ namespace ai
             creators["focus rti targets"] = [](PlayerbotAI* ai) { return new FocusRtiTargetsStrategy(ai); };
             creators["heal interrupt"] = [](PlayerbotAI* ai) { return new HealInterruptStrategy(ai); };
             creators["preheal"] = [](PlayerbotAI* ai) { return new PreHealStrategy(ai); };
+            creators["heal rotate"] = [](PlayerbotAI* ai) { return new HealRotateStrategy(ai); };
             creators["wbuff"] = [](PlayerbotAI* ai) { return new WorldBuffStrategy(ai); };
             creators["wbuff travel"] = [](PlayerbotAI* ai) { return new WorldBuffTravelStrategy(ai); };
             creators["silent"] = [](PlayerbotAI* ai) { return new SilentStrategy(ai); };

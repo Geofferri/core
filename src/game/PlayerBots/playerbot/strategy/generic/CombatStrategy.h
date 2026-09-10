@@ -101,6 +101,22 @@ namespace ai
         void InitReactionTriggers(std::list<TriggerNode*>& triggers) override;
     };
 
+    class HealRotateStrategy : public Strategy
+    {
+    public:
+        HealRotateStrategy(PlayerbotAI* ai) : Strategy(ai) {}
+
+        std::string getName() override { return "heal rotate"; }
+
+        static bool IsActive(PlayerbotAI* ai);
+        static bool CanHealNow(PlayerbotAI* ai);
+        static std::string GetBiggestHealSpell(PlayerbotAI* ai);
+        static bool IsBiggestDirectHeal(PlayerbotAI* ai, const std::string& spellName);
+
+    private:
+        void InitCombatTriggers(std::list<TriggerNode*>& triggers) override;
+    };
+
     class PreHealStrategy : public Strategy
     {
     public:

@@ -81,6 +81,7 @@ namespace ai
             creators["wait for attack time"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "wait for attack time"); };
             creators["pet"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "pet"); };
             creators["focus heal"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "focus heal"); };
+            creators["heal rotate"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "heal rotate"); };
             creators["follow target"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "follow target"); };
             creators["boost target"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "boost target"); };
             creators["buff target"] = [](PlayerbotAI* ai) { return new ChatCommandTrigger(ai, "buff target"); };

@@ -196,6 +196,7 @@ namespace ai
             creators["self resurrect"] = [](PlayerbotAI* ai) { return new SelfResurrectAction(ai); };
             creators["pet"] = [](PlayerbotAI* ai) { return new SetPetAction(ai); };
 
+            creators["heal rotate"] = [](PlayerbotAI* ai) { return new SetHealRotateAction(ai); };
             creators["focus heal targets"] = [](PlayerbotAI* ai) { return new SetFocusHealTargetsAction(ai); };
             creators["follow target"] = [](PlayerbotAI* ai) { return new SetFollowTargetAction(ai); };
             creators["boost targets"] = [](PlayerbotAI* ai) { return new SetBoostTargetsAction(ai); };

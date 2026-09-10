@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "GenericActions.h"
 #include "UseItemAction.h"
+#include "playerbot/strategy/generic/CombatStrategy.h"
 
 using namespace ai;
 
@@ -274,10 +275,40 @@ bool CastAuraSpellAction::isUseful()
     return CastSpellAction::isUseful() && !ai->HasAura(GetSpellName(), GetTarget(), false, isOwner);
 }
 
+bool CastHealingSpellAction::Execute(Event& event)
+{
+    const bool executed = CastSpellAction::Execute(event);
+
+    if (executed && HealRotateStrategy::IsActive(ai) && HealRotateStrategy::IsBiggestDirectHeal(ai, GetSpellName()))
+    {
+        SET_AI_VALUE(time_t, "heal rotate last heal time", time(0));
+    }
+
+    return executed;
+}
+
 bool CastHealingSpellAction::isUseful()
 {
     if (!CastAuraSpellAction::isUseful())
         return false;
+
+    if (HealRotateStrategy::IsActive(ai))
+    {
+        if (!HealRotateStrategy::IsBiggestDirectHeal(ai, GetSpellName()))
+        {
+            return false;
+        }
+
+        if (!HealRotateStrategy::CanHealNow(ai))
+            return false;
+
+        Unit* rotateTarget = GetTarget();
+
+        if (!rotateTarget || rotateTarget->GetHealth() >= rotateTarget->GetMaxHealth())
+        {
+            return false;
+        }
+    }
 
     if (!IsStrictFocusHealTargetAllowed())
         return false;
@@ -338,6 +369,9 @@ bool CastEnchantItemAction::isPossible()
 
 bool CastAoeHealSpellAction::isUseful()
 {
+    if (HealRotateStrategy::IsActive(ai))
+        return false;
+
     if (!CastSpellAction::isUseful())
         return false;
 

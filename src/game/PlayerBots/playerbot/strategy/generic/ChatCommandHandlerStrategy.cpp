@@ -112,6 +112,7 @@ ChatCommandHandlerStrategy::ChatCommandHandlerStrategy(PlayerbotAI* ai) : PassTr
     supported.push_back("set value");
     supported.push_back("glyph");
     supported.push_back("speak");
+    supported.push_back("heal rotate");
 }
 
 void ChatCommandHandlerStrategy::InitReactionTriggers(std::list<TriggerNode*> &triggers)

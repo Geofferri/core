@@ -494,3 +494,52 @@ bool SetSpellTargetAction::Execute(Event& event)
 
     return false;
 }
+
+bool SetHealRotateAction::Execute(Event& event)
+{
+    Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
+
+    if (!ai->IsHeal(bot))
+        return true;
+
+    const std::string param = LowercaseString(event.getParam());
+
+    if (param == "off" || param == "clear" || param == "0")
+    {
+        ai->ChangeStrategy("-heal rotate", BotState::BOT_STATE_COMBAT);
+
+        SET_AI_VALUE(time_t, "heal rotate last heal time", 0);
+
+        ai->TellPlayerNoFacing(requester, "Heal rotation disabled");
+
+        return true;
+    }
+
+    if (param.empty() || param.find_first_not_of("0123456789") != std::string::npos)
+    {
+        ai->TellPlayerNoFacing(requester, "Please provide a rotation time in seconds, for example: heal rotate 60");
+
+        return false;
+    }
+
+    const int32 rotateTime = std::stoi(param.c_str());
+
+    if (rotateTime < 1 || rotateTime > 3600)
+    {
+        ai->TellPlayerNoFacing(requester, "Please provide a rotation time between 1 and 3600 seconds");
+
+        return false;
+    }
+
+    SET_AI_VALUE(int32, "heal rotate time", rotateTime);
+
+    ai->ChangeStrategy("+heal rotate", BotState::BOT_STATE_COMBAT);
+
+    std::ostringstream out;
+
+    out << "Heal rotation enabled with a " << rotateTime << " second cycle";
+
+    ai->TellPlayerNoFacing(requester, out);
+
+    return true;
+}

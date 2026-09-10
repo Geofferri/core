@@ -56,3 +56,13 @@ namespace ai
         virtual bool isUsefulWhenStunned() override { return true; }
     };
 }
+
+class SetHealRotateAction : public ChatCommandAction
+{
+public:
+    SetHealRotateAction(PlayerbotAI* ai, std::string name = "heal rotate") : ChatCommandAction(ai, name) {}
+
+    bool Execute(Event& event) override;
+
+    virtual bool isUsefulWhenStunned() override { return true; }
+};
