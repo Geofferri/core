@@ -20,6 +20,7 @@ namespace ai
         bool HasReachAction() { return !GetReachActionName().empty(); }
         
     protected:
+        bool IsStrictFocusHealCastAllowed();
         const uint32& GetSpellID() const { return spellId; }
         const std::string& GetSpellName() const { return spellName; }
         void SetSpellName(const std::string& name, std::string spellIDContextName = "spell id", bool force = false);
