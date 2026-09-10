@@ -99,8 +99,8 @@ bool StayChatShortcutAction::Execute(Event& event)
         return false;
 
     ai->Reset();
-    ai->ChangeStrategy("+stay,-follow,-wander,-passive", BotState::BOT_STATE_NON_COMBAT);
-    ai->ChangeStrategy("+stay,-follow,-wander,-passive", BotState::BOT_STATE_COMBAT);
+    ai->ChangeStrategy("+stay,-follow,-guard,-wander,-passive", BotState::BOT_STATE_NON_COMBAT);
+    ai->ChangeStrategy("+stay,-follow,-guard,-wander,-passive", BotState::BOT_STATE_COMBAT);
 
     SetPosition(bot);
     SetPosition(bot, "stay");
@@ -119,8 +119,8 @@ bool GuardChatShortcutAction::Execute(Event& event)
         return false;
 
     ai->Reset();
-    ai->ChangeStrategy("+guard,-follow,-wander,-passive", BotState::BOT_STATE_NON_COMBAT);
-    ai->ChangeStrategy("+guard,-follow,-wander,-passive", BotState::BOT_STATE_COMBAT);
+    ai->ChangeStrategy("+guard,-follow,-stay,-wander,-passive", BotState::BOT_STATE_NON_COMBAT);
+    ai->ChangeStrategy("+guard,-follow,-stay,-wander,-passive", BotState::BOT_STATE_COMBAT);
 
     SetPosition(bot);
     SetPosition(bot, "guard");
