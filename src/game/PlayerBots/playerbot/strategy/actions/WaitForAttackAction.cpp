@@ -2,6 +2,7 @@
 #include "playerbot/playerbot.h"
 #include "WaitForAttackAction.h"
 #include "playerbot/strategy/generic/CombatStrategy.h"
+#include "playerbot/strategy/generic/KiteStrategy.h"
 
 using namespace ai;
 
@@ -117,4 +118,274 @@ bool WaitForAttackKeepSafeDistanceAction::IsEnemyClose(const WorldPosition& poin
     }
 
     return false;
+}
+
+bool KitePositionAction::isUseful()
+{
+    //
+    // Deliberately do NOT call MovementAction::isUseful().
+    //
+    // Normal movement actions are blocked by "stay".
+    // Kite positioning must override that because this is combat survival
+    // positioning, not ordinary movement behavior.
+    //
+    return ai->IsStateActive(BotState::BOT_STATE_COMBAT) && ai->HasStrategy("kite", BotState::BOT_STATE_COMBAT);
+}
+
+bool KitePositionAction::IsValidHostile(Unit* unit) const { return unit && unit->IsInWorld() && unit->IsAlive() && unit->GetMapId() == bot->GetMapId() && sServerFacade.IsHostileTo(bot, unit); }
+
+Unit* KitePositionAction::GetClosestHostile(const std::list<Unit*>& hostiles) const
+{
+    Unit* closest = nullptr;
+    float closestDistance = 999999.0f;
+
+    for (Unit* hostile : hostiles)
+    {
+        if (!IsValidHostile(hostile))
+            continue;
+
+        const float distance = sServerFacade.GetDistance2d(bot, hostile);
+
+        if (distance < closestDistance)
+        {
+            closest = hostile;
+            closestDistance = distance;
+        }
+    }
+
+    return closest;
+}
+
+bool KitePositionAction::IsSafePoint(const WorldPosition& point, const std::list<Unit*>& hostiles, bool keepCurrentTargetInRange, bool requireCurrentTargetLos) const
+{
+    const float minDistanceSq = KiteStrategy::GetMinDistance() * KiteStrategy::GetMinDistance();
+
+    const float maxDistanceSq = KiteStrategy::GetMaxDistance() * KiteStrategy::GetMaxDistance();
+
+    Unit* currentTarget = AI_VALUE(Unit*, "current target");
+
+    if (IsValidHostile(currentTarget))
+    {
+        const float distanceSq = WorldPosition(currentTarget).sqDistance2d(point);
+
+        if (distanceSq <= minDistanceSq)
+            return false;
+
+        if (keepCurrentTargetInRange && distanceSq > maxDistanceSq)
+        {
+            return false;
+        }
+
+        if (requireCurrentTargetLos && !currentTarget->IsWithinLOS(point.getX(), point.getY(), point.getZ() + bot->GetCollisionHeight()))
+        {
+            return false;
+        }
+    }
+
+    //
+    // Never choose a destination that leaves us within 10 yards
+    // of ANY combat hostile.
+    //
+    for (Unit* hostile : hostiles)
+    {
+        if (!IsValidHostile(hostile))
+            continue;
+
+        const float distanceSq = WorldPosition(hostile).sqDistance2d(point);
+
+        if (distanceSq <= minDistanceSq)
+            return false;
+    }
+
+    return true;
+}
+
+const WorldPosition KitePositionAction::GetBestPoint(Unit* anchor, const const std::list<Unit*>& hostiles, bool outerOnly) const
+{
+    if (!IsValidHostile(anchor))
+        return WorldPosition();
+
+    const WorldPosition botPosition(bot);
+    const WorldPosition anchorPosition(anchor);
+
+    const float startAngle = anchorPosition.getAngleTo(botPosition);
+
+    const float radiansIncrement = (15.0f / 180.0f) * M_PI_F;
+
+    const float distances[] = {32.0f, 31.0f, 30.0f, 28.0f, 26.0f, 24.0f, 21.0f, 18.0f, 16.0f};
+
+    const uint8 distanceCount = outerOnly ? 3 : 9;
+
+    for (uint8 pass = 0; pass < 3; ++pass)
+    {
+        const bool keepCurrentTargetInRange = pass < 2;
+
+        const bool requireCurrentTargetLos = pass == 0;
+
+        for (uint8 d = 0; d < distanceCount; ++d)
+        {
+            const float distance = distances[d];
+
+            for (uint8 step = 0; step <= 12; ++step)
+            {
+                const float offset = step * radiansIncrement;
+
+                for (int8 dir = -1; dir <= 1; dir += 2)
+                {
+                    if (step == 0 && dir == 1)
+                        continue;
+
+                    const float pointAngle = startAngle + offset * dir;
+
+                    WorldPosition point = anchorPosition + WorldPosition(0, distance * cos(pointAngle), distance * sin(pointAngle), 1.0f);
+
+                    point.setZ(point.getHeight());
+
+                    if (!anchor->IsWithinLOS(point.getX(), point.getY(), point.getZ() + bot->GetCollisionHeight()))
+                    {
+                        continue;
+                    }
+
+                    if (!IsSafePoint(point, hostiles, keepCurrentTargetInRange, requireCurrentTargetLos))
+                    {
+                        continue;
+                    }
+
+                    if (!IsSafePath(point, hostiles))
+                        continue;
+
+                    return point;
+                }
+            }
+        }
+    }
+
+    return WorldPosition();
+}
+
+bool KitePositionAction::Execute(Event& event)
+{
+    const std::list<Unit*> hostiles = KiteStrategy::GetNearbyHostiles(ai);
+
+    Unit* currentTarget = AI_VALUE(Unit*, "current target");
+
+    Unit* closest = GetClosestHostile(hostiles);
+
+    const bool tooClose = IsValidHostile(closest) && sServerFacade.GetDistance2d(bot, closest) <= KiteStrategy::GetMinDistance();
+
+    const time_t combatStart = ai->GetAiObjectContext()->GetValue<time_t>("combat start time")->Get();
+
+    const time_t settledCombatStart = ai->GetAiObjectContext()->GetValue<time_t>("manual time", "kite settled combat start")->Get();
+
+    const bool initialPositioning = combatStart && settledCombatStart != combatStart;
+
+    Unit* anchor = nullptr;
+    bool outerOnly = false;
+    if (tooClose)
+    {
+        anchor = closest;
+        outerOnly = false;
+    }
+    else if (initialPositioning && IsValidHostile(currentTarget))
+    {
+        anchor = currentTarget;
+        outerOnly = true;
+    }
+    else if (IsValidHostile(currentTarget) && sServerFacade.GetDistance2d(bot, currentTarget) > KiteStrategy::GetMaxDistance())
+    {
+        anchor = currentTarget;
+        outerOnly = true;
+    }
+
+    if (!anchor)
+        return false;
+
+    const WorldPosition bestPoint = GetBestPoint(anchor, hostiles, outerOnly);
+
+    if (!bestPoint)
+        return false;
+
+    return MoveTo(bestPoint.getMapId(), bestPoint.getX(), bestPoint.getY(), bestPoint.getZ(), false, IsReaction(), false, true);
+}
+
+bool KitePositionAction::IsSafePath(const WorldPosition& point, const std::list<Unit*>& hostiles) const
+{
+    const WorldPosition start(bot);
+
+    std::vector<WorldPosition> path = start.getPathTo(point, bot);
+
+    if (path.empty() || !point.isPathTo(path))
+        return false;
+
+    const float safeDistance = KiteStrategy::GetMinDistance();
+
+    const float safeDistanceSq = safeDistance * safeDistance;
+
+    for (Unit* hostile : hostiles)
+    {
+        if (!IsValidHostile(hostile))
+            continue;
+
+        const WorldPosition hostilePos(hostile);
+
+        WorldPosition previous = start;
+
+        float previousDistanceSq = hostilePos.sqDistance2d(previous);
+
+        bool escaping = previousDistanceSq <= safeDistanceSq;
+
+        for (const WorldPosition& next : path)
+        {
+            const float dx = next.getX() - previous.getX();
+
+            const float dy = next.getY() - previous.getY();
+
+            const float lengthSq = dx * dx + dy * dy;
+
+            float t = 0.0f;
+
+            if (lengthSq > 0.001f)
+            {
+                t = ((hostilePos.getX() - previous.getX()) * dx + (hostilePos.getY() - previous.getY()) * dy) / lengthSq;
+
+                if (t < 0.0f)
+                    t = 0.0f;
+                else if (t > 1.0f)
+                    t = 1.0f;
+            }
+
+            const float closestX = previous.getX() + t * dx;
+
+            const float closestY = previous.getY() + t * dy;
+
+            const float enemyDx = hostilePos.getX() - closestX;
+
+            const float enemyDy = hostilePos.getY() - closestY;
+
+            const float segmentDistanceSq = enemyDx * enemyDx + enemyDy * enemyDy;
+
+            const float nextDistanceSq = hostilePos.sqDistance2d(next);
+
+            if (escaping)
+            {
+                if (segmentDistanceSq + 0.01f < previousDistanceSq)
+                {
+                    return false;
+                }
+
+                if (nextDistanceSq > safeDistanceSq)
+                    escaping = false;
+            }
+            else
+            {
+                if (segmentDistanceSq <= safeDistanceSq)
+                    return false;
+            }
+
+            previousDistanceSq = nextDistanceSq;
+            previous = next;
+        }
+    }
+
+    return true;
 }

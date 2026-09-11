@@ -117,6 +117,7 @@ namespace ai
             creators["flee"] = [](PlayerbotAI* ai) { return new FleeAction(ai); };
             creators["flee with pet"] = [](PlayerbotAI* ai) { return new FleeWithPetAction(ai); };
             creators["wait for attack keep safe distance"] = [](PlayerbotAI* ai) { return new WaitForAttackKeepSafeDistanceAction(ai); };
+            creators["kite position"] = [](PlayerbotAI* ai) { return new KitePositionAction(ai); };
             creators["shoot"] = [](PlayerbotAI* ai) { return new CastShootAction(ai); };
             creators["whipper root tuber"] = [](PlayerbotAI* ai) { return new UseWhipperRootTuberAction(ai); };
             creators["healthstone"] = [](PlayerbotAI* ai) { return new UseHealthstoneAction(ai); };

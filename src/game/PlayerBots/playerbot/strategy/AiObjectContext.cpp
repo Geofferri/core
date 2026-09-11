@@ -19,6 +19,7 @@ using namespace ai;
 AiObjectContext::AiObjectContext(PlayerbotAI* ai) : PlayerbotAIAware(ai)
 {
     strategyContexts.Add(new StrategyContext());
+    strategyContexts.Add(new CombatRangeStrategyContext());
     strategyContexts.Add(new MovementStrategyContext());
     strategyContexts.Add(new AssistStrategyContext());
     strategyContexts.Add(new QuestStrategyContext());

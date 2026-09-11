@@ -80,7 +80,6 @@ namespace ai
             creators["avoid mobs"] = [](PlayerbotAI* ai) { return new AvoidMobsStrategy(ai); };
             creators["duel"] = [](PlayerbotAI* ai) { return new DuelStrategy(ai); };
             creators["start duel"] = [](PlayerbotAI* ai) { return new StartDuelStrategy(ai); };
-            creators["kite"] = [](PlayerbotAI* ai) { return new KiteStrategy(ai); };
             creators["potions"] = [](PlayerbotAI* ai) { return new UsePotionsStrategy(ai); };
             creators["cast time"] = [](PlayerbotAI* ai) { return new CastTimeStrategy(ai); };
             creators["threat"] = [](PlayerbotAI* ai) { return new ThreatStrategy(ai); };
@@ -111,8 +110,6 @@ namespace ai
             creators["sit"] = [](PlayerbotAI* ai) { return new SitStrategy(ai); };
             creators["mark rti"] = [](PlayerbotAI* ai) { return new MarkRtiStrategy(ai); };
             creators["ads"] = [](PlayerbotAI* ai) { return new PossibleAdsStrategy(ai); };
-            creators["close"] = [](PlayerbotAI* ai) { return new MeleeCombatStrategy(ai); };
-            creators["ranged"] = [](PlayerbotAI* ai) { return new RangedCombatStrategy(ai); };
             creators["behind"] = [](PlayerbotAI* ai) { return new SetBehindCombatStrategy(ai); };
             creators["bg"] = [](PlayerbotAI* ai) { return new BGStrategy(ai); };
             creators["battleground"] = [](PlayerbotAI* ai) { return new BattlegroundStrategy(ai); };
@@ -176,6 +173,19 @@ namespace ai
             creators["netherspite"] = [](PlayerbotAI* ai) { return new NetherspiteFightStrategy(ai); };
             creators["prince malchezaar"] = [](PlayerbotAI* ai) { return new PrinceMalchezaarFightStrategy(ai); };
             creators["four horseman"] = [](PlayerbotAI* ai) { return new FourHorsemanFightStrategy(ai); };
+        }
+    };
+
+    class CombatRangeStrategyContext : public NamedObjectContext<Strategy>
+    {
+    public:
+        CombatRangeStrategyContext() : NamedObjectContext<Strategy>(false, true)
+        {
+            creators["close"] = [](PlayerbotAI* ai) { return new MeleeCombatStrategy(ai); };
+
+            creators["ranged"] = [](PlayerbotAI* ai) { return new RangedCombatStrategy(ai); };
+
+            creators["kite"] = [](PlayerbotAI* ai) { return new KiteStrategy(ai); };
         }
     };
 

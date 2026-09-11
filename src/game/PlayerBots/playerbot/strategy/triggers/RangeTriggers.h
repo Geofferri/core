@@ -6,6 +6,7 @@
 #include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
 #include "playerbot/strategy/values/Stances.h"
+#include "playerbot/strategy/generic/KiteStrategy.h"
 
 namespace ai
 {
@@ -234,6 +235,65 @@ namespace ai
 
     protected:
         float distance;
+    };
+
+    class KitePositionTrigger : public Trigger
+    {
+    public:
+        KitePositionTrigger(PlayerbotAI* ai) : Trigger(ai, "kite position", 1) {}
+
+        bool IsActive() override
+        {
+            if (!ai->IsStateActive(BotState::BOT_STATE_COMBAT))
+                return false;
+
+            if (!ai->HasStrategy("kite", BotState::BOT_STATE_COMBAT))
+                return false;
+
+            const std::list<Unit*> hostiles = KiteStrategy::GetNearbyHostiles(ai);
+
+            for (Unit* hostile : hostiles)
+            {
+                if (!IsValidHostile(hostile))
+                    continue;
+
+                if (sServerFacade.GetDistance2d(bot, hostile) <= KiteStrategy::GetMinDistance())
+                {
+                    return true;
+                }
+            }
+
+            Unit* target = AI_VALUE(Unit*, "current target");
+
+            if (!IsValidHostile(target))
+                return false;
+
+            const float targetDistance = sServerFacade.GetDistance2d(bot, target);
+
+            const time_t combatStart = ai->GetAiObjectContext()->GetValue<time_t>("combat start time")->Get();
+
+            if (!combatStart)
+                return false;
+
+            const time_t settledCombatStart = ai->GetAiObjectContext()->GetValue<time_t>("manual time", "kite settled combat start")->Get();
+
+            if (settledCombatStart != combatStart)
+            {
+                if (targetDistance >= KiteStrategy::GetSettleDistance() && targetDistance <= KiteStrategy::GetMaxDistance())
+                {
+                    ai->GetAiObjectContext()->GetValue<time_t>("manual time", "kite settled combat start")->Set(combatStart);
+
+                    return false;
+                }
+
+                return true;
+            }
+
+            return targetDistance > KiteStrategy::GetMaxDistance();
+        }
+
+    private:
+        bool IsValidHostile(Unit* unit) const { return unit && unit->IsInWorld() && unit->IsAlive() && unit->GetMapId() == bot->GetMapId() && sServerFacade.IsHostileTo(bot, unit); }
     };
 
     class CombatStancePositionTrigger : public Trigger
