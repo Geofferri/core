@@ -2,8 +2,26 @@
 #include "playerbot/playerbot.h"
 #include "CombatStrategy.h"
 #include "playerbot/ServerFacade.h"
+#include <mutex>
+#include <unordered_map>
 
 using namespace ai;
+
+namespace
+{
+    struct HealRotateGroupState
+    {
+        time_t combatStart = 0;
+        time_t nextHealTime = 0;
+
+        int32 nextHealerIndex = 0;
+        int32 healerCount = 0;
+        int32 rotateTime = 0;
+    };
+
+    std::mutex sHealRotateMutex;
+    std::unordered_map<uint32, HealRotateGroupState> sHealRotateStates;
+}
 
 void CombatStrategy::InitCombatTriggers(std::list<TriggerNode*> &triggers)
 {
@@ -36,6 +54,11 @@ float AvoidAoeStrategyMultiplier::GetValue(Action* action)
 {
     if (!action)
         return 1.0f;
+
+    if (HealRotateStrategy::IsActive(ai) && action->getName() == HealRotateStrategy::GetBiggestHealAction(ai))
+    {
+        return 1.0f;
+    }
 
     std::string name = action->getName();
     if (name == "follow" || name == "co" || name == "nc" || name == "react" || name == "select new target" || name == "flee")
@@ -160,9 +183,10 @@ float WaitForAttackMultiplier::GetValue(Action* action)
 
 void HealInterruptStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
-    triggers.push_back(new TriggerNode(
-        "heal target full health",
-        NextAction::array(0, new NextAction("interrupt current spell", ACTION_EMERGENCY), NULL)));
+    if (ai->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
+        return;
+
+    triggers.push_back(new TriggerNode("heal target full health", NextAction::array(0, new NextAction("interrupt current spell", ACTION_EMERGENCY), NULL)));
 }
 
 void HealInterruptStrategy::InitReactionTriggers(std::list<TriggerNode*>& triggers)
@@ -201,63 +225,121 @@ bool HealRotateStrategy::CanHealNow(PlayerbotAI* ai)
     if (!IsActive(ai))
         return false;
 
+    Player* bot = ai->GetBot();
+
+    if (!bot)
+        return false;
+
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
     const int32 rotateTime = ai->GetAiObjectContext()->GetValue<int32>("heal rotate time")->Get();
 
     const int32 healerIndex = ai->GetAiObjectContext()->GetValue<int32>("heal rotate index")->Get();
 
     const int32 healerCount = ai->GetAiObjectContext()->GetValue<int32>("heal rotate count")->Get();
 
-    const int32 lastCycle = ai->GetAiObjectContext()->GetValue<int32>("heal rotate last cycle")->Get();
-
-    if (rotateTime <= 0 || healerIndex < 0 || healerCount <= 0 || healerIndex >= healerCount)
+    if (rotateTime <= 0 || healerCount <= 0 || healerIndex < 0 || healerIndex >= healerCount)
     {
         return false;
     }
 
-    const time_t sharedCombatStart = GetSharedCombatStart(ai);
+    const time_t combatStart = GetSharedCombatStart(ai);
+
+    if (!combatStart)
+        return false;
+
     const time_t now = time(0);
+    const uint32 groupId = group->GetId();
 
-    if (!sharedCombatStart || now < sharedCombatStart)
+    std::lock_guard<std::mutex> lock(sHealRotateMutex);
+
+    HealRotateGroupState& state = sHealRotateStates[groupId];
+
+    if (state.combatStart != combatStart || state.healerCount != healerCount || state.rotateTime != rotateTime)
+    {
+        state.combatStart = combatStart;
+        state.nextHealTime = combatStart;
+
+        state.nextHealerIndex = 0;
+        state.healerCount = healerCount;
+        state.rotateTime = rotateTime;
+    }
+
+    if (now < state.nextHealTime)
         return false;
 
-    const uint32 elapsed = static_cast<uint32>(now - sharedCombatStart);
+    const int32 spacing = std::max<int32>(1, rotateTime / healerCount);
 
-    const uint32 phase = elapsed % static_cast<uint32>(rotateTime);
+    const int32 maxStall = std::max<int32>(8, spacing + 3);
 
-    const uint32 activeHealer = static_cast<uint32>((static_cast<uint64>(phase) * static_cast<uint32>(healerCount)) / static_cast<uint32>(rotateTime));
+    if (now >= state.nextHealTime + maxStall)
+    {
+        ++state.nextHealerIndex;
 
-    if (activeHealer != static_cast<uint32>(healerIndex))
-        return false;
+        if (state.nextHealerIndex >= healerCount)
+            state.nextHealerIndex = 0;
 
-    const int32 currentCycle = static_cast<int32>(elapsed / static_cast<uint32>(rotateTime));
+        state.nextHealTime = now;
+    }
 
-    if (lastCycle == currentCycle)
-        return false;
-
-    return true;
+    return healerIndex == state.nextHealerIndex;
 }
 
 void HealRotateStrategy::MarkHealUsed(PlayerbotAI* ai)
 {
-    if (!ai)
+    if (!ai || !ai->GetBot())
+        return;
+
+    Group* group = ai->GetBot()->GetGroup();
+
+    if (!group)
         return;
 
     const int32 rotateTime = ai->GetAiObjectContext()->GetValue<int32>("heal rotate time")->Get();
 
-    if (rotateTime <= 0)
+    const int32 healerIndex = ai->GetAiObjectContext()->GetValue<int32>("heal rotate index")->Get();
+
+    const int32 healerCount = ai->GetAiObjectContext()->GetValue<int32>("heal rotate count")->Get();
+
+    if (rotateTime <= 0 || healerCount <= 0 || healerIndex < 0 || healerIndex >= healerCount)
+    {
+        return;
+    }
+
+    const time_t combatStart = GetSharedCombatStart(ai);
+
+    if (!combatStart)
         return;
 
-    const time_t sharedCombatStart = GetSharedCombatStart(ai);
+    const uint32 groupId = group->GetId();
     const time_t now = time(0);
 
-    if (!sharedCombatStart || now < sharedCombatStart)
+    std::lock_guard<std::mutex> lock(sHealRotateMutex);
+
+    auto itr = sHealRotateStates.find(groupId);
+
+    if (itr == sHealRotateStates.end())
         return;
 
-    const uint32 elapsed = static_cast<uint32>(now - sharedCombatStart);
+    HealRotateGroupState& state = itr->second;
 
-    const int32 currentCycle = static_cast<int32>(elapsed / static_cast<uint32>(rotateTime));
+    if (state.combatStart != combatStart)
+        return;
 
-    ai->GetAiObjectContext()->GetValue<int32>("heal rotate last cycle")->Set(currentCycle);
+    if (state.nextHealerIndex != healerIndex)
+        return;
+
+    ++state.nextHealerIndex;
+
+    if (state.nextHealerIndex >= healerCount)
+        state.nextHealerIndex = 0;
+
+    const int32 spacing = std::max<int32>(1, rotateTime / healerCount);
+
+    state.nextHealTime = now + spacing;
 }
 
 float HealRotateMultiplier::GetValue(Action* action)
@@ -292,34 +374,35 @@ time_t HealRotateStrategy::GetSharedCombatStart(PlayerbotAI* ai)
     if (!ai || !ai->GetBot())
         return 0;
 
-    Player* bot = ai->GetBot();
-    Group* group = bot->GetGroup();
+    Group* group = ai->GetBot()->GetGroup();
 
     if (!group)
         return ai->GetCombatStartTime();
 
-    time_t sharedCombatStart = 0;
-
     for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
     {
         Player* member = ref->getSource();
+
         if (!member)
             continue;
 
         PlayerbotAI* memberAI = member->GetPlayerbotAI();
+
         if (!memberAI || memberAI->IsRealPlayer())
             continue;
 
         if (!memberAI->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
+        {
+            continue;
+        }
+
+        const int32 healerIndex = memberAI->GetAiObjectContext()->GetValue<int32>("heal rotate index")->Get();
+
+        if (healerIndex != 0)
             continue;
 
-        const time_t combatStart = memberAI->GetCombatStartTime();
-        if (!combatStart)
-            continue;
-
-        if (!sharedCombatStart || combatStart < sharedCombatStart)
-            sharedCombatStart = combatStart;
+        return memberAI->GetCombatStartTime();
     }
 
-    return sharedCombatStart;
+    return 0;
 }

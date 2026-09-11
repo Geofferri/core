@@ -992,12 +992,6 @@ void PlayerbotAI::OnCombatStarted()
         // Reset the combat start timestamp
         aiObjectContext->GetValue<time_t>("combat start time")->Set(time(0));
 
-        // Reset heal rotation state for this fight
-        if (HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
-        {
-            aiObjectContext->GetValue<int32>("heal rotate last cycle")->Set(-1);
-        }
-
         // Update stay position on location when combat starts
         if (HasStrategy("stay", BotState::BOT_STATE_COMBAT) && !HasStrategy("stay", BotState::BOT_STATE_NON_COMBAT))
         {

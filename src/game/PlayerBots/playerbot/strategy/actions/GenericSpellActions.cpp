@@ -358,7 +358,7 @@ bool CastHealingSpellAction::isUseful()
 
         Unit* rotateTarget = GetTarget();
 
-        if (!rotateTarget || !rotateTarget->IsInWorld() || rotateTarget->GetMapId() != bot->GetMapId() || rotateTarget->GetHealth() >= rotateTarget->GetMaxHealth())
+        if (!rotateTarget || !rotateTarget->IsInWorld() || !rotateTarget->IsAlive() || rotateTarget->GetMapId() != bot->GetMapId())
         {
             return false;
         }

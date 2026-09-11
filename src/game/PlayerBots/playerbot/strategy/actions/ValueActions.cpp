@@ -510,7 +510,6 @@ bool SetHealRotateAction::Execute(Event& event)
 
         SET_AI_VALUE(int32, "heal rotate index", -1);
         SET_AI_VALUE(int32, "heal rotate count", 0);
-        SET_AI_VALUE(int32, "heal rotate last cycle", -1);
 
         ai->TellPlayerNoFacing(requester, "Heal rotation disabled");
 
@@ -609,8 +608,6 @@ bool SetHealRotateAction::Execute(Event& event)
     SET_AI_VALUE(int32, "heal rotate index", healerIndex);
 
     SET_AI_VALUE(int32, "heal rotate count", healerCount);
-
-    SET_AI_VALUE(int32, "heal rotate last cycle", -1);
 
     ai->ChangeStrategy("+heal rotate", BotState::BOT_STATE_COMBAT);
 

@@ -300,7 +300,6 @@ namespace ai
             creators["heal rotate time"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 60, "heal rotate time"); };
             creators["heal rotate index"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, -1, "heal rotate index"); };
             creators["heal rotate count"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 0, "heal rotate count"); };
-            creators["heal rotate last cycle"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, -1, "heal rotate last cycle"); };
             creators["boost targets"] = [](PlayerbotAI* ai) { return new BoostTargetsValue(ai); };
             creators["revive targets"] = [](PlayerbotAI* ai) { return new ReviveTargetsValue(ai); };
             creators["buff targets"] = [](PlayerbotAI* ai) { return new BuffTargetsValue(ai); };
@@ -431,7 +430,6 @@ namespace ai
             creators["combat start time"] = [](PlayerbotAI* ai) { return new CombatStartTimeValue(ai); };
             creators["wait for attack time"] = [](PlayerbotAI* ai) { return new WaitForAttackTimeValue(ai); };
             creators["heal rotate time"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 60, "heal rotate time"); };
-            creators["heal rotate last heal time"] = [](PlayerbotAI* ai) { return new TimeManualSetValue(ai, 0, "heal rotate last heal time"); };
 
             creators["mc runes"] = [](PlayerbotAI* ai) { return new MCRunesValue(ai); };
             creators["suppression devices"] = [](PlayerbotAI* ai) { return new SuppressionDevicesValue(ai); };
