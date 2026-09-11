@@ -50,6 +50,7 @@
 #include "PlayerbotLLMInterface.h"
 #include "Packets/Chat.h"
 #include "World.h"
+#include "strategy/values/Stances.h"
 
 #ifdef MANGOSBOT_TWO
 #include "Vehicle.h"
@@ -2689,6 +2690,11 @@ void PlayerbotAI::ResetStrategies(bool autoLoad)
 
     if (autoLoad && HasPlayerRelation())
         sPlayerbotDbStore.Load(this);
+
+    StanceValue* stanceValue = (StanceValue*)aiObjectContext->GetValue<Stance*>("stance");
+
+    if (stanceValue)
+        stanceValue->Load("auto");
 
     for (uint8 i = 0; i < (uint8)BotState::BOT_STATE_ALL; i++)
     {

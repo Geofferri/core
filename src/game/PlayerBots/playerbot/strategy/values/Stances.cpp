@@ -184,6 +184,36 @@ if (target->GetVictim() && target->GetVictim()->GetObjectGuid() == bot->GetObjec
         }
     };
 
+    class AutoStance : public MoveStance
+    {
+    public:
+        AutoStance(PlayerbotAI* ai) : MoveStance(ai, "auto") {}
+
+        virtual float GetAngle() override
+        {
+            if (ai->IsTank(bot))
+            {
+                TankStance stance(ai);
+                return stance.GetAngle();
+            }
+
+            if (ai->IsHeal(bot))
+            {
+                NearStance stance(ai);
+                return stance.GetAngle();
+            }
+
+            if (ai->IsRanged(bot))
+            {
+                NearStance stance(ai);
+                return stance.GetAngle();
+            }
+
+            BehindStance stance(ai);
+            return stance.GetAngle();
+        }
+    };
+
     class SpreadStance : public Stance
     {
     public:
@@ -302,14 +332,15 @@ if (target->GetVictim() && target->GetVictim()->GetObjectGuid() == bot->GetObjec
     };
 };
 
-StanceValue::StanceValue(PlayerbotAI* ai) : ManualSetValue<Stance*>(ai, new NearStance(ai), "stance")
+StanceValue::StanceValue(PlayerbotAI* ai) : ManualSetValue<Stance*>(ai, new AutoStance(ai), "stance")
 {
 }
 
 void StanceValue::Reset()
 {
-    if (value) delete value;
-    value = new NearStance(ai);
+    if (value)
+        delete value;
+    value = new AutoStance(ai);
 }
 
 std::string StanceValue::Save()
@@ -319,14 +350,22 @@ std::string StanceValue::Save()
 
 bool StanceValue::Load(std::string name)
 {
-    if (name == "behind")
+    if (name == "auto" || name == "default")
     {
-        if (value) delete value;
+        if (value)
+            delete value;
+        value = new AutoStance(ai);
+    }
+    else if (name == "behind")
+    {
+        if (value)
+            delete value;
         value = new BehindStance(ai);
     }
-    else if (name == "near" || name == "default")
+    else if (name == "near")
     {
-        if (value) delete value;
+        if (value)
+            delete value;
         value = new NearStance(ai);
     }
     else if (name == "tank")
@@ -376,7 +415,7 @@ bool SetStanceAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid stance: |cffff0000" << stance;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near (default), tank, turnback, behind, spread");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff auto (default), near, tank, turnback, behind, spread");
         return false;
     }
 
