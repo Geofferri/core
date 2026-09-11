@@ -17,6 +17,10 @@ void ClassStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         NextAction::array(0, new NextAction("check mount state", ACTION_EMERGENCY), NULL)));
 
     triggers.push_back(new TriggerNode(
+        "spread position",
+        NextAction::array(0, new NextAction("move to combat stance", ACTION_MOVE + 5), NULL)));
+
+    triggers.push_back(new TriggerNode(
         "very often",
         NextAction::array(0, new NextAction("use lightwell", ACTION_LIGHT_HEAL), NULL)));
 

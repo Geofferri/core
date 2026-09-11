@@ -87,6 +87,34 @@ bool MovementAction::isUseful()
     return !ai->HasStrategy("stay", ai->GetState());
 }
 
+bool MovementAction::IsSpreadStanceActive()
+{
+    Stance* stance = AI_VALUE(Stance*, "stance");
+
+    return stance && stance->getName() == "spread";
+}
+
+bool MovementAction::ShouldMoveToSpreadPosition()
+{
+    Stance* stance = AI_VALUE(Stance*, "stance");
+
+    if (!stance || stance->getName() != "spread")
+    {
+        return false;
+    }
+
+    WorldLocation loc = stance->GetLocation();
+
+    if (Formation::IsNullLocation(loc) || loc.mapId == uint32(-1))
+    {
+        return false;
+    }
+
+    const float distanceToSpreadPosition = sServerFacade.GetDistance2d(bot, loc.x, loc.y);
+
+    return sServerFacade.IsDistanceGreaterThan(distanceToSpreadPosition, sPlayerbotAIConfig.targetPosRecalcDistance);
+}
+
 bool MovementAction::MoveNear(uint32 mapId, float x, float y, float z, float distance)
 {
     float angle = GetFollowAngle();
@@ -2661,6 +2689,26 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
     }
     */
 
+    if (obj->IsUnit() && sServerFacade.IsHostileTo(bot, static_cast<Unit*>(obj)))
+    {
+        Stance* stance = AI_VALUE(Stance*, "stance");
+
+        if (stance && stance->getName() == "spread")
+        {
+            WorldLocation stanceLoc = stance->GetLocation();
+
+            if (!Formation::IsNullLocation(stanceLoc) && stanceLoc.mapId != uint32(-1))
+            {
+                const float distanceToStance = bot->GetDistance2d(stanceLoc.x, stanceLoc.y);
+
+                if (distanceToStance > sPlayerbotAIConfig.targetPosRecalcDistance)
+                {
+                    return MoveTo(stanceLoc.mapId, stanceLoc.x, stanceLoc.y, stanceLoc.z);
+                }
+            }
+        }
+    }
+
     // Let the active combat stance determine melee chase positioning.
     if (!ai->IsRanged(bot) && obj->IsUnit() && sServerFacade.IsHostileTo(bot, static_cast<Unit*>(obj)))
     {
@@ -2668,7 +2716,7 @@ bool MovementAction::ChaseTo(WorldObject* obj, float distance, float angle)
         Stance* stance = AI_VALUE(Stance*, "stance");
 
         // Turnback has its own movement handling below.
-        if (stance && stance->getName() != "turnback")
+        if (stance && stance->getName() != "turnback" && stance->getName() != "spread")
         {
             WorldLocation stanceLoc = stance->GetLocation();
 

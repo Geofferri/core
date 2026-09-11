@@ -77,6 +77,17 @@ namespace ai
             else if (qualifier == "current target")
             {
                 Stance* stance = AI_VALUE(Stance*, "stance");
+
+                if (stance && stance->getName() == "spread")
+                {
+                    Unit* target = AI_VALUE(Unit*, "current target");
+
+                    if (!target || !target->IsInWorld())
+                        return 0.0f;
+
+                    return sServerFacade.GetDistance2d(ai->GetBot(), target);
+                }
+
                 WorldLocation loc = stance->GetLocation();
                 return sServerFacade.GetDistance2d(ai->GetBot(), loc.x, loc.y);
             }

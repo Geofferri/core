@@ -5,6 +5,7 @@
 #include "playerbot/strategy/generic/CombatStrategy.h"
 #include "playerbot/strategy/values/PossibleAttackTargetsValue.h"
 #include "playerbot/strategy/values/Formations.h"
+#include "playerbot/strategy/values/Stances.h"
 
 namespace ai
 {
@@ -253,6 +254,39 @@ namespace ai
         }
     };
 
+    class SpreadPositionTrigger : public Trigger
+    {
+    public:
+        SpreadPositionTrigger(PlayerbotAI* ai) : Trigger(ai, "spread position", 1) {}
+
+        bool IsActive() override
+        {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (!stance || stance->getName() != "spread")
+                return false;
+
+            Unit* target = AI_VALUE(Unit*, "current target");
+
+            if (!target || !target->IsInWorld())
+                return false;
+
+            if (!sServerFacade.IsHostileTo(bot, target))
+                return false;
+
+            WorldLocation loc = stance->GetLocation();
+
+            if (Formation::IsNullLocation(loc) || loc.mapId == uint32(-1))
+            {
+                return false;
+            }
+
+            const float distanceToSpreadPosition = sServerFacade.GetDistance2d(bot, loc.x, loc.y);
+
+            return sServerFacade.IsDistanceGreaterThan(distanceToSpreadPosition, sPlayerbotAIConfig.targetPosRecalcDistance);
+        }
+    };
+
     class EnemyOutOfMeleeTrigger : public OutOfRangeTrigger
     {
     public:
@@ -346,38 +380,44 @@ namespace ai
 
         virtual bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return false;
+            }
+
             Unit* followTarget = AI_VALUE(Unit*, "follow target");
 
             if (!followTarget || !ai->IsSafe(followTarget))
                 return false;
 
-            //We need to land or liftoff.
             if (followTarget->IsFlying() != bot->IsFlying() || followTarget->IsTaxiFlying())
                 return true;
 
             Formation* formation = AI_VALUE(Formation*, "formation");
 
-            //Already using proper formation.
             if (sServerFacade.GetChaseTarget(bot) && sServerFacade.GetChaseTarget(bot)->GetObjectGuid() == followTarget->GetObjectGuid() && formation->GetAngle() == sServerFacade.GetChaseAngle(bot) && formation->GetOffset() == sServerFacade.GetChaseOffset(bot))
+            {
                 return false;
+            }
 
             if (!ai->IsStateActive(BotState::BOT_STATE_COMBAT))
                 return true;
 
             Unit* target = AI_VALUE(Unit*, "current target");
-
             if (!target)
                 return true;
 
-            if (target->GetTargetGuid() == bot->GetObjectGuid()) //Try pulling target to follow position
+            if (target->GetTargetGuid() == bot->GetObjectGuid())
                 return true;
 
-            if (!ai->IsRanged(bot)) //Melee bots stay in melee.
+            if (!ai->IsRanged(bot))
                 return false;
 
             WorldPosition formationPosition = AI_VALUE(WorldPosition, "formation position");
 
-            if (formationPosition.sqDistance2d(target) > ai->GetRange("spell")) //Do not move to follow if we can't attack from that position.
+            if (formationPosition.sqDistance2d(target) > ai->GetRange("spell"))
                 return false;
 
             return true;
@@ -391,11 +431,20 @@ namespace ai
 
         virtual bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return bot->GetMotionMaster()->GetCurrentMovementGeneratorType() == FOLLOW_MOTION_TYPE;
+            }
+
             if (bot->GetMotionMaster()->GetCurrentMovementGeneratorType() != FOLLOW_MOTION_TYPE)
                 return false;
 
             if (sServerFacade.GetChaseTarget(bot) && !sServerFacade.GetChaseTarget(bot)->IsPlayer() && sServerFacade.GetChaseTarget(bot)->IsMoving())
+            {
                 return false;
+            }
 
             Unit* followTarget = AI_VALUE(Unit*, "follow target");
 
@@ -405,7 +454,6 @@ namespace ai
             if (bot->GetTransport() != followTarget->GetTransport())
                 return true;
 
-            //We need to land or liftoff.
             if (followTarget->IsTaxiFlying())
                 return true;
 
@@ -422,6 +470,13 @@ namespace ai
 
         bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return false;
+            }
+
             return !AI_VALUE2(bool, "can free move", "wandermax");
         }
     };
@@ -433,6 +488,13 @@ namespace ai
 
         bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return false;
+            }
+
             return !AI_VALUE2(bool, "can free move", "wandermin") && AI_VALUE2(bool, "can free move", "wandermax");
         }
     };
@@ -444,6 +506,13 @@ namespace ai
 
         bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return false;
+            }
+
             return AI_VALUE2(bool, "can free move", "wandermin");
         }
     };
@@ -488,6 +557,13 @@ namespace ai
 
         virtual bool IsActive() override
         {
+            Stance* stance = AI_VALUE(Stance*, "stance");
+
+            if (ai->IsStateActive(BotState::BOT_STATE_COMBAT) && stance && stance->getName() == "spread")
+            {
+                return false;
+            }
+
             return !AI_VALUE(bool, "can free move");
         };
     };

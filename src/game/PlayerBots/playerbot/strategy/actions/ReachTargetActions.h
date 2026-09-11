@@ -190,6 +190,7 @@ namespace ai
         virtual bool Execute(Event& event) override
         {
             Unit* target = AI_VALUE(Unit*, "current target");
+
             if (!target || !target->IsInWorld())
                 return false;
 
@@ -198,18 +199,26 @@ namespace ai
 
         virtual bool isUseful() override
         {
-            if (!MovementAction::isUseful())
+            const bool spread = IsSpreadStanceActive();
+
+            if (!spread && !MovementAction::isUseful())
                 return false;
 
             Unit* target = AI_VALUE(Unit*, "current target");
+
             if (!target || !target->IsInWorld())
                 return false;
 
             if (!sServerFacade.IsHostileTo(bot, target))
                 return false;
 
-            if (bot->IsNonMeleeSpellCasted(true, false, true))
+            if (!spread && bot->IsNonMeleeSpellCasted(true, false, true))
+            {
                 return false;
+            }
+
+            if (spread)
+                return ShouldMoveToSpreadPosition();
 
             return sServerFacade.IsDistanceGreaterThan(AI_VALUE2(float, "distance", "current target"), sPlayerbotAIConfig.targetPosRecalcDistance);
         }

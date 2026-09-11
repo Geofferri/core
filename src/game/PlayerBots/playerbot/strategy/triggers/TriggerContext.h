@@ -107,6 +107,7 @@ namespace ai
 
             creators["enemy out of melee"] = [](PlayerbotAI* ai) { return new EnemyOutOfMeleeTrigger(ai); };
             creators["combat stance position"] = [](PlayerbotAI* ai) { return new CombatStancePositionTrigger(ai); };
+            creators["spread position"] = [](PlayerbotAI* ai) { return new SpreadPositionTrigger(ai); };
             creators["enemy out of spell"] = [](PlayerbotAI* ai) { return new EnemyOutOfSpellRangeTrigger(ai); };
             creators["enemy too close for spell"] = [](PlayerbotAI* ai) { return new EnemyTooCloseForSpellTrigger(ai); };
             creators["enemy too close for shoot"] = [](PlayerbotAI* ai) { return new EnemyTooCloseForShootTrigger(ai); };

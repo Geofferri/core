@@ -5,6 +5,7 @@
 #include "playerbot/PlayerbotAIConfig.h"
 #include "playerbot/strategy/values/PositionValue.h"
 #include "playerbot/strategy/values/AoeValues.h"
+#include "playerbot/strategy/values/Stances.h"
 
 #include <regex>
 
@@ -766,6 +767,14 @@ bool HasAreaDebuffTrigger::IsActive()
 
 bool ReturnToStayPositionTrigger::IsActive()
 {
+    if (ai->IsStateActive(BotState::BOT_STATE_COMBAT))
+    {
+        Stance* stance = AI_VALUE(Stance*, "stance");
+
+        if (stance && stance->getName() == "spread")
+            return false;
+    }
+
     PositionEntry stayPosition = AI_VALUE(PositionMap&, "position")["stay"];
     if (stayPosition.isSet())
     {

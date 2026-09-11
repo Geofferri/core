@@ -5,6 +5,10 @@
 #include "playerbot/ServerFacade.h"
 #include "Arrow.h"
 
+#include <algorithm>
+#include <cmath>
+#include <vector>
+
 using namespace ai;
 
 Unit* Stance::GetTarget()
@@ -179,6 +183,113 @@ if (target->GetVictim() && target->GetVictim()->GetObjectGuid() == bot->GetObjec
             return round((angle - M_PI / 4 + (M_PI / 2 / count) * (index + 0.5f)) * 10.0f) / 10.0f;
         }
     };
+
+    class SpreadStance : public Stance
+    {
+    public:
+        SpreadStance(PlayerbotAI* ai) : Stance(ai, "spread") {}
+
+    protected:
+        WorldLocation GetLocationInternal() override
+        {
+            const float spreadDistance = 10.0f;
+            const float spreadPadding = 0.5f;
+            const float epsilon = 0.01f;
+
+            const float botX = bot->GetPositionX();
+            const float botY = bot->GetPositionY();
+            const float botZ = bot->GetPositionZ();
+
+            Group* group = bot->GetGroup();
+            if (!group)
+                return WorldLocation(bot->GetMapId(), botX, botY, botZ);
+
+            std::vector<Player*> closeMembers;
+
+            float pushX = 0.0f;
+            float pushY = 0.0f;
+
+            for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+            {
+                Player* member = ref->getSource();
+
+                if (!member || member == bot || !ai->IsSafe(member) || !sServerFacade.IsAlive(member) || member->GetMapId() != bot->GetMapId())
+                {
+                    continue;
+                }
+
+                const float dx = botX - member->GetPositionX();
+                const float dy = botY - member->GetPositionY();
+                const float distanceSq = dx * dx + dy * dy;
+
+                if (distanceSq >= spreadDistance * spreadDistance)
+                    continue;
+
+                closeMembers.push_back(member);
+
+                if (distanceSq > epsilon * epsilon)
+                {
+                    const float distance = sqrt(distanceSq);
+                    const float weight = (spreadDistance - distance) / distance;
+
+                    pushX += dx * weight;
+                    pushY += dy * weight;
+                }
+            }
+
+            if (closeMembers.empty())
+                return WorldLocation(bot->GetMapId(), botX, botY, botZ);
+
+            float angle;
+
+            if ((pushX * pushX + pushY * pushY) > epsilon * epsilon)
+            {
+                angle = atan2(pushY, pushX);
+            }
+            else
+            {
+                angle = GetFollowAngle();
+            }
+
+            const float dirX = cos(angle);
+            const float dirY = sin(angle);
+
+            float moveDistance = 0.0f;
+
+            for (Player* member : closeMembers)
+            {
+                const float dx = botX - member->GetPositionX();
+                const float dy = botY - member->GetPositionY();
+
+                const float dot = dx * dirX + dy * dirY;
+
+                const float c = dx * dx + dy * dy - spreadDistance * spreadDistance;
+
+                const float discriminant = dot * dot - c;
+
+                if (discriminant < 0.0f)
+                    continue;
+
+                const float exitDistance = -dot + sqrt(discriminant);
+
+                moveDistance = std::max(moveDistance, exitDistance);
+            }
+
+            moveDistance += spreadPadding;
+
+            float x = botX + dirX * moveDistance;
+            float y = botY + dirY * moveDistance;
+            float z = botZ;
+
+            if (!bot->IsFlying() && !bot->IsSwimming())
+            {
+                z += CONTACT_DISTANCE;
+                bot->UpdateAllowedPositionZ(x, y, z);
+            }
+
+            return WorldLocation(bot->GetMapId(), x, y, z);
+        }
+    };
 };
 
 StanceValue::StanceValue(PlayerbotAI* ai) : ManualSetValue<Stance*>(ai, new NearStance(ai), "stance")
@@ -218,6 +329,12 @@ bool StanceValue::Load(std::string name)
         if (value) delete value;
         value = new TurnBackStance(ai);
     }
+    else if (name == "spread")
+    {
+        if (value)
+            delete value;
+        value = new SpreadStance(ai);
+    }
     else return false;
 
     return true;
@@ -249,7 +366,7 @@ bool SetStanceAction::Execute(Event& event)
     {
         std::ostringstream str; str << "Invalid stance: |cffff0000" << stance;
         ai->TellPlayer(requester, str);
-        ai->TellPlayer(requester, "Please set to any of:|cffffffff near (default), tank, turnback, behind");
+        ai->TellPlayer(requester, "Please set to any of:|cffffffff near (default), tank, turnback, behind, spread");
         return false;
     }
 
