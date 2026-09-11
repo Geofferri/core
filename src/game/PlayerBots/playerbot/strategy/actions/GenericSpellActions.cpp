@@ -335,6 +335,18 @@ bool CastAuraSpellAction::isUseful()
 
 bool CastHealingSpellAction::Execute(Event& event)
 {
+    if (!IsStrictFocusHealTargetAllowed())
+        return false;
+
+    if (HealRotateStrategy::IsActive(ai))
+    {
+        if (getName() != HealRotateStrategy::GetBiggestHealAction(ai))
+            return false;
+
+        if (!HealRotateStrategy::CanHealNow(ai))
+            return false;
+    }
+
     bool executed = CastSpellAction::Execute(event);
 
     if (executed && HealRotateStrategy::IsActive(ai) && getName() == HealRotateStrategy::GetBiggestHealAction(ai))
@@ -347,7 +359,9 @@ bool CastHealingSpellAction::Execute(Event& event)
 
 bool CastHealingSpellAction::isUseful()
 {
-    // Heal rotation completely takes over normal healing selection.
+    if (!IsStrictFocusHealTargetAllowed())
+        return false;
+
     if (HealRotateStrategy::IsActive(ai))
     {
         if (getName() != HealRotateStrategy::GetBiggestHealAction(ai))
@@ -358,13 +372,10 @@ bool CastHealingSpellAction::isUseful()
 
         Unit* rotateTarget = GetTarget();
 
-        if (!rotateTarget || !rotateTarget->IsInWorld() || !rotateTarget->IsAlive() || rotateTarget->GetMapId() != bot->GetMapId())
+        if (!rotateTarget || !rotateTarget->IsInWorld() || rotateTarget->GetMapId() != bot->GetMapId() || rotateTarget->GetHealth() >= rotateTarget->GetMaxHealth())
         {
             return false;
         }
-
-        if (!IsStrictFocusHealCastAllowed())
-            return false;
 
         return true;
     }
