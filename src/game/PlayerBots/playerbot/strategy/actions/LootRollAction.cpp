@@ -275,8 +275,6 @@ bool LootRollAction::Execute(Event& event)
 
 bool AutoLootRollAction::Execute(Event& event)
 {
-    ai->TellPlayerNoFacing(bot, "AUTO LOOT ROLL TEST");
-
     LootRollMap lootRolls = AI_VALUE(LootRollMap, "active rolls");
 
     auto currentRoll = lootRolls.begin();
