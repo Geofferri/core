@@ -65,6 +65,9 @@ SpellCastResult BotUseItemSpell::ForceSpellStart(SpellCastTargets const* targets
     // Prepare data for triggers
     prepareDataForTriggerSystem();
 
+    if (itemCheats && !m_CastItem && m_spellInfo->IsPositiveSpell())
+        m_canTrigger = false;
+
     // Calculate cast time
     m_casttime = m_spellInfo->GetCastTime(m_caster, this);
 
@@ -717,7 +720,10 @@ bool UseAction::UseItemInternal(Player* requester, uint32 itemId, Unit* unit, Ga
 
             bot->RemoveAurasWithInterruptFlags(AURA_INTERRUPT_ITEM_USE_CANCELS, 0, false, spellInfo->HasAttribute(SPELL_ATTR_EX_ALLOW_WHILE_STEALTHED));
 
-            BotUseItemSpell* spell = new BotUseItemSpell(bot, spellInfo, (successCasts > 0));
+            bool const usingItemCheat = itemUsed == nullptr && ai->HasCheat(BotCheatMask::item);
+
+            BotUseItemSpell* spell = new BotUseItemSpell(bot, spellInfo, (successCasts > 0), ObjectGuid(), nullptr, usingItemCheat);
+
             spell->SetCastItem(itemUsed);
             SpellCastResult result = spell->ForceSpellStart(&targets);
 
