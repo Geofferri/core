@@ -192,6 +192,16 @@ if (target->GetVictim() && target->GetVictim()->GetObjectGuid() == bot->GetObjec
     protected:
         WorldLocation GetLocationInternal() override
         {
+            if (ai->IsTank(bot))
+            {
+                Unit* target = GetTarget();
+
+                if (!target || target->GetVictim() != bot)
+                {
+                    return WorldLocation(bot->GetMapId(), bot->GetPositionX(), bot->GetPositionY(), bot->GetPositionZ());
+                }
+            }
+
             const float spreadDistance = 10.0f;
             const float spreadPadding = 0.5f;
             const float epsilon = 0.01f;
