@@ -314,11 +314,11 @@ bool CastAuraSpellAction::isUseful()
 
 bool CastHealingSpellAction::Execute(Event& event)
 {
-    const bool executed = CastSpellAction::Execute(event);
+    bool executed = CastSpellAction::Execute(event);
 
-    if (executed && HealRotateStrategy::IsActive(ai) && HealRotateStrategy::IsBiggestDirectHeal(ai, GetSpellName()))
+    if (executed && HealRotateStrategy::IsActive(ai) && getName() == HealRotateStrategy::GetBiggestHealAction(ai))
     {
-        SET_AI_VALUE(time_t, "heal rotate last heal time", time(0));
+        HealRotateStrategy::MarkHealUsed(ai);
     }
 
     return executed;

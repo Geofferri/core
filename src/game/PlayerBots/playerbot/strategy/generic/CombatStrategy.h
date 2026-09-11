@@ -110,11 +110,20 @@ namespace ai
 
         static bool IsActive(PlayerbotAI* ai);
         static bool CanHealNow(PlayerbotAI* ai);
-        static std::string GetBiggestHealSpell(PlayerbotAI* ai);
-        static bool IsBiggestDirectHeal(PlayerbotAI* ai, const std::string& spellName);
+        static void MarkHealUsed(PlayerbotAI* ai);
+        static std::string GetBiggestHealAction(PlayerbotAI* ai);
 
     private:
         void InitCombatTriggers(std::list<TriggerNode*>& triggers) override;
+        void InitCombatMultipliers(std::list<Multiplier*>& multipliers) override;
+    };
+
+    class HealRotateMultiplier : public Multiplier
+    {
+    public:
+        HealRotateMultiplier(PlayerbotAI* ai) : Multiplier(ai, "heal rotate") {}
+
+        float GetValue(Action* action) override;
     };
 
     class PreHealStrategy : public Strategy

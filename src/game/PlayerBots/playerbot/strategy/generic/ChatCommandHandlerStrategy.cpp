@@ -312,4 +312,8 @@ void ChatCommandHandlerStrategy::InitReactionTriggers(std::list<TriggerNode*> &t
     triggers.push_back(new TriggerNode(
         "ready",
         NextAction::array(0, new NextAction("ready check", relevance), NULL)));
+
+    triggers.push_back(new TriggerNode(
+        "heal rotate",
+        NextAction::array(0, new NextAction("heal rotate", relevance), NULL)));
 }

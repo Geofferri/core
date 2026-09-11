@@ -297,6 +297,10 @@ namespace ai
             creators["manual follow target"] = [](PlayerbotAI* ai) { return new ManualFollowTargetValue(ai); };
             creators["focus heal targets"] = [](PlayerbotAI* ai) { return new FocusHealTargetValue(ai); };
             creators["strict focus heal"] = [](PlayerbotAI* ai) { return new BoolManualSetValue(ai, false, "strict focus heal"); };
+            creators["heal rotate time"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 60, "heal rotate time"); };
+            creators["heal rotate index"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, -1, "heal rotate index"); };
+            creators["heal rotate count"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, 0, "heal rotate count"); };
+            creators["heal rotate last cycle"] = [](PlayerbotAI* ai) { return new IntManualSetValue(ai, -1, "heal rotate last cycle"); };
             creators["boost targets"] = [](PlayerbotAI* ai) { return new BoostTargetsValue(ai); };
             creators["revive targets"] = [](PlayerbotAI* ai) { return new ReviveTargetsValue(ai); };
             creators["buff targets"] = [](PlayerbotAI* ai) { return new BuffTargetsValue(ai); };

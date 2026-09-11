@@ -499,7 +499,7 @@ bool SetHealRotateAction::Execute(Event& event)
 {
     Player* requester = event.getOwner() ? event.getOwner() : GetMaster();
 
-    if (!ai->IsHeal(bot))
+    if (!PlayerbotAI::IsHeal(bot, true))
         return true;
 
     const std::string param = LowercaseString(event.getParam());
@@ -508,36 +508,115 @@ bool SetHealRotateAction::Execute(Event& event)
     {
         ai->ChangeStrategy("-heal rotate", BotState::BOT_STATE_COMBAT);
 
-        SET_AI_VALUE(time_t, "heal rotate last heal time", 0);
+        SET_AI_VALUE(int32, "heal rotate index", -1);
+        SET_AI_VALUE(int32, "heal rotate count", 0);
+        SET_AI_VALUE(int32, "heal rotate last cycle", -1);
 
         ai->TellPlayerNoFacing(requester, "Heal rotation disabled");
 
         return true;
     }
 
+    if (param == "?")
+    {
+        if (!ai->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
+        {
+            ai->TellPlayerNoFacing(requester, "Heal rotation disabled");
+
+            return true;
+        }
+
+        const int32 rotateTime = AI_VALUE(int32, "heal rotate time");
+
+        const int32 healerIndex = AI_VALUE(int32, "heal rotate index");
+
+        const int32 healerCount = AI_VALUE(int32, "heal rotate count");
+
+        const uint32 phase = rotateTime > 0 ? static_cast<uint32>(time(0) % rotateTime) : 0;
+
+        const uint32 activeHealer = rotateTime > 0 && healerCount > 0 ? static_cast<uint32>((static_cast<uint64>(phase) * healerCount) / rotateTime) : 0;
+
+        std::ostringstream out;
+
+        out << "Heal rotate " << rotateTime << " sec | healer " << (healerIndex + 1) << "/" << healerCount << " | phase " << phase << " | active " << (activeHealer + 1) << "/" << healerCount << " | my turn " << (static_cast<int32>(activeHealer) == healerIndex ? "YES" : "NO");
+
+        ai->TellPlayerNoFacing(requester, out);
+
+        return true;
+    }
+
     if (param.empty() || param.find_first_not_of("0123456789") != std::string::npos)
     {
-        ai->TellPlayerNoFacing(requester, "Please provide a rotation time in seconds, for example: heal rotate 60");
+        ai->TellPlayerNoFacing(requester, "Usage: heal rotate <seconds>");
 
         return false;
     }
 
-    const int32 rotateTime = std::stoi(param.c_str());
+    const int32 rotateTime = std::stoi(param);
 
-    if (rotateTime < 1 || rotateTime > 3600)
+    if (rotateTime <= 0)
+        return false;
+
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return false;
+
+    int32 healerCount = 0;
+    int32 healerIndex = -1;
+
+    Group::MemberSlotList const& members = group->GetMemberSlots();
+
+    for (Group::member_citerator itr = members.begin(); itr != members.end(); ++itr)
     {
-        ai->TellPlayerNoFacing(requester, "Please provide a rotation time between 1 and 3600 seconds");
+        Player* member = sObjectMgr.GetPlayer(itr->guid);
+
+        if (!member)
+            continue;
+
+        PlayerbotAI* memberAI = member->GetPlayerbotAI();
+
+        if (!memberAI || memberAI->IsRealPlayer())
+        {
+            continue;
+        }
+
+        if (!PlayerbotAI::IsHeal(member, true))
+        {
+            continue;
+        }
+
+        if (member == bot)
+            healerIndex = healerCount;
+
+        ++healerCount;
+    }
+
+    if (healerCount <= 0 || healerIndex < 0)
+    {
+        return false;
+    }
+
+    if (rotateTime < healerCount)
+    {
+        ai->TellPlayerNoFacing(requester, "Heal rotation time is shorter than the healer count");
 
         return false;
     }
 
     SET_AI_VALUE(int32, "heal rotate time", rotateTime);
 
+    SET_AI_VALUE(int32, "heal rotate index", healerIndex);
+
+    SET_AI_VALUE(int32, "heal rotate count", healerCount);
+
+    SET_AI_VALUE(int32, "heal rotate last cycle", -1);
+
     ai->ChangeStrategy("+heal rotate", BotState::BOT_STATE_COMBAT);
 
     std::ostringstream out;
 
-    out << "Heal rotation enabled with a " << rotateTime << " second cycle";
+    out << "Heal rotate " << rotateTime << " sec | healer " << (healerIndex + 1) << "/" << healerCount;
 
     ai->TellPlayerNoFacing(requester, out);
 
