@@ -182,6 +182,27 @@ bool CastSpellAction::isUseful()
     if (!IsStrictFocusHealCastAllowed())
         return false;
 
+    if (HealRotateStrategy::IsActive(ai))
+    {
+        if (getName() != HealRotateStrategy::GetBiggestHealAction(ai))
+            return false;
+
+        if (!HealRotateStrategy::CanHealNow(ai))
+            return false;
+
+        Unit* rotateTarget = GetTarget();
+
+        if (!rotateTarget || !rotateTarget->IsInWorld() || rotateTarget->GetMapId() != bot->GetMapId() || rotateTarget->GetHealth() >= rotateTarget->GetMaxHealth())
+        {
+            return false;
+        }
+
+        if (!IsStrictFocusHealCastAllowed())
+            return false;
+
+        return true;
+    }
+
     if (!AI_VALUE2(bool, "spell cast useful", spellName))
         return false;
 
@@ -326,6 +347,28 @@ bool CastHealingSpellAction::Execute(Event& event)
 
 bool CastHealingSpellAction::isUseful()
 {
+    // Heal rotation completely takes over normal healing selection.
+    if (HealRotateStrategy::IsActive(ai))
+    {
+        if (getName() != HealRotateStrategy::GetBiggestHealAction(ai))
+            return false;
+
+        if (!HealRotateStrategy::CanHealNow(ai))
+            return false;
+
+        Unit* rotateTarget = GetTarget();
+
+        if (!rotateTarget || !rotateTarget->IsInWorld() || rotateTarget->GetMapId() != bot->GetMapId() || rotateTarget->GetHealth() >= rotateTarget->GetMaxHealth())
+        {
+            return false;
+        }
+
+        if (!IsStrictFocusHealCastAllowed())
+            return false;
+
+        return true;
+    }
+
     if (!CastAuraSpellAction::isUseful())
         return false;
 
@@ -385,6 +428,9 @@ bool CastEnchantItemAction::isPossible()
 
 bool CastAoeHealSpellAction::isUseful()
 {
+    if (HealRotateStrategy::IsActive(ai))
+        return false;
+
     if (AI_VALUE(bool, "strict focus heal"))
         return false;
 
@@ -889,6 +935,22 @@ Unit* CurePartyMemberAction::GetTarget()
     return target;
 }
 
+bool CastCureSpellAction::isUseful()
+{
+    if (HealRotateStrategy::IsActive(ai))
+        return false;
+
+    return CastSpellAction::isUseful();
+}
+
+bool CurePartyMemberAction::isUseful()
+{
+    if (HealRotateStrategy::IsActive(ai))
+        return false;
+
+    return CastSpellAction::isUseful();
+}
+
 bool CurePartyMemberAction::Execute(Event& event)
 {
     bool result = CastSpellAction::Execute(event);
@@ -917,4 +979,53 @@ bool CastHealingSpellAction::IsStrictFocusHealTargetAllowed()
         return false;
 
     return std::find(focusHealTargets.begin(), focusHealTargets.end(), target->GetObjectGuid()) != focusHealTargets.end();
+}
+
+Unit* HealPartyMemberAction::GetTarget()
+{
+    if (HealRotateStrategy::IsActive(ai))
+    {
+        const bool strictFocus = ai->GetAiObjectContext()->GetValue<bool>("strict focus heal")->Get();
+
+        const std::list<ObjectGuid> focusTargets = ai->GetAiObjectContext()->GetValue<std::list<ObjectGuid>>("focus heal targets")->Get();
+
+        Unit* bestTarget = nullptr;
+        float bestHealthPct = 101.0f;
+
+        for (const ObjectGuid& guid : focusTargets)
+        {
+            Unit* target = ai->GetUnit(guid);
+
+            if (!target || !target->IsInWorld() || !target->IsAlive() || target->GetMapId() != bot->GetMapId())
+            {
+                continue;
+            }
+
+            Group* group = bot->GetGroup();
+
+            if (group && target->IsPlayer() && !group->IsMember(target->GetObjectGuid()))
+            {
+                continue;
+            }
+
+            if (target->GetHealth() >= target->GetMaxHealth())
+                continue;
+
+            const float healthPct = target->GetHealthPercent();
+
+            if (!bestTarget || healthPct < bestHealthPct)
+            {
+                bestTarget = target;
+                bestHealthPct = healthPct;
+            }
+        }
+
+        if (bestTarget)
+            return bestTarget;
+
+        if (strictFocus)
+            return nullptr;
+    }
+
+    return CastSpellAction::GetTarget();
 }

@@ -224,12 +224,14 @@ namespace ai
         virtual bool isUseful() override;
     };
 
-	class CastCureSpellAction : public CastSpellAction
-	{
-	public:
-		CastCureSpellAction(PlayerbotAI* ai, std::string spell) : CastSpellAction(ai, spell) {}
-		virtual std::string GetTargetName() override { return "self target"; }
-	};
+    class CastCureSpellAction : public CastSpellAction
+    {
+    public:
+        CastCureSpellAction(PlayerbotAI* ai, std::string spell) : CastSpellAction(ai, spell) {}
+
+        virtual bool isUseful() override;
+        virtual std::string GetTargetName() override { return "self target"; }
+    };
 
 	class PartyMemberActionNameSupport 
     {
@@ -245,8 +247,13 @@ namespace ai
     {
     public:
         HealPartyMemberAction(PlayerbotAI* ai, std::string spell, uint8 estAmount = 15.0f) : CastHealingSpellAction(ai, spell, estAmount), PartyMemberActionNameSupport(spell) {}
+
         virtual std::string getName() override { return PartyMemberActionNameSupport::getName(); }
-		virtual std::string GetTargetName() override { return "party member to heal"; }
+
+        virtual std::string GetTargetName() override { return "party member to heal"; }
+
+    protected:
+        Unit* GetTarget() override;
     };
 
     class HealHotPartyMemberAction : public HealPartyMemberAction
@@ -273,6 +280,7 @@ namespace ai
         CurePartyMemberAction(PlayerbotAI* ai, std::string spell, uint32 dispelType) : CastSpellAction(ai, spell), PartyMemberActionNameSupport(spell), dispelType(dispelType) {}
 
         virtual bool Execute(Event& event) override;
+        virtual bool isUseful() override;
 
     protected:
         virtual Unit* GetTarget() override;

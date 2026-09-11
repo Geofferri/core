@@ -209,21 +209,27 @@ bool HealRotateStrategy::CanHealNow(PlayerbotAI* ai)
 
     const int32 lastCycle = ai->GetAiObjectContext()->GetValue<int32>("heal rotate last cycle")->Get();
 
-    if (rotateTime <= 0 || healerCount <= 0 || healerIndex < 0 || healerIndex >= healerCount)
+    if (rotateTime <= 0 || healerIndex < 0 || healerCount <= 0 || healerIndex >= healerCount)
     {
         return false;
     }
 
+    const time_t sharedCombatStart = GetSharedCombatStart(ai);
     const time_t now = time(0);
 
-    const uint32 phase = static_cast<uint32>(now % rotateTime);
+    if (!sharedCombatStart || now < sharedCombatStart)
+        return false;
+
+    const uint32 elapsed = static_cast<uint32>(now - sharedCombatStart);
+
+    const uint32 phase = elapsed % static_cast<uint32>(rotateTime);
 
     const uint32 activeHealer = static_cast<uint32>((static_cast<uint64>(phase) * static_cast<uint32>(healerCount)) / static_cast<uint32>(rotateTime));
 
     if (activeHealer != static_cast<uint32>(healerIndex))
         return false;
 
-    const int32 currentCycle = static_cast<int32>(now / rotateTime);
+    const int32 currentCycle = static_cast<int32>(elapsed / static_cast<uint32>(rotateTime));
 
     if (lastCycle == currentCycle)
         return false;
@@ -241,7 +247,15 @@ void HealRotateStrategy::MarkHealUsed(PlayerbotAI* ai)
     if (rotateTime <= 0)
         return;
 
-    const int32 currentCycle = static_cast<int32>(time(0) / rotateTime);
+    const time_t sharedCombatStart = GetSharedCombatStart(ai);
+    const time_t now = time(0);
+
+    if (!sharedCombatStart || now < sharedCombatStart)
+        return;
+
+    const uint32 elapsed = static_cast<uint32>(now - sharedCombatStart);
+
+    const int32 currentCycle = static_cast<int32>(elapsed / static_cast<uint32>(rotateTime));
 
     ai->GetAiObjectContext()->GetValue<int32>("heal rotate last cycle")->Set(currentCycle);
 }
@@ -261,7 +275,7 @@ float HealRotateMultiplier::GetValue(Action* action)
     return HealRotateStrategy::CanHealNow(ai) ? 1.0f : 0.0f;
 }
 
-void HealRotateStrategy::InitCombatMultipliers(std::list<Multiplier*>& multipliers) { multipliers.push_back(new HealRotateMultiplier(ai)); }
+void HealRotateStrategy::InitCombatMultipliers(std::list<Multiplier*>& multipliers) {}
 
 void HealRotateStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
 {
@@ -271,4 +285,41 @@ void HealRotateStrategy::InitCombatTriggers(std::list<TriggerNode*>& triggers)
         return;
 
     triggers.push_back(new TriggerNode("timer", NextAction::array(0, new NextAction(action, ACTION_PASSTROUGH), NULL)));
+}
+
+time_t HealRotateStrategy::GetSharedCombatStart(PlayerbotAI* ai)
+{
+    if (!ai || !ai->GetBot())
+        return 0;
+
+    Player* bot = ai->GetBot();
+    Group* group = bot->GetGroup();
+
+    if (!group)
+        return ai->GetCombatStartTime();
+
+    time_t sharedCombatStart = 0;
+
+    for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+    {
+        Player* member = ref->getSource();
+        if (!member)
+            continue;
+
+        PlayerbotAI* memberAI = member->GetPlayerbotAI();
+        if (!memberAI || memberAI->IsRealPlayer())
+            continue;
+
+        if (!memberAI->HasStrategy("heal rotate", BotState::BOT_STATE_COMBAT))
+            continue;
+
+        const time_t combatStart = memberAI->GetCombatStartTime();
+        if (!combatStart)
+            continue;
+
+        if (!sharedCombatStart || combatStart < sharedCombatStart)
+            sharedCombatStart = combatStart;
+    }
+
+    return sharedCombatStart;
 }

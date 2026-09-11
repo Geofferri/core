@@ -1,5 +1,6 @@
 #pragma once
 #include "playerbot/strategy/Strategy.h"
+#include <ctime>
 
 namespace ai
 {
@@ -112,8 +113,9 @@ namespace ai
         static bool CanHealNow(PlayerbotAI* ai);
         static void MarkHealUsed(PlayerbotAI* ai);
         static std::string GetBiggestHealAction(PlayerbotAI* ai);
+        static time_t GetSharedCombatStart(PlayerbotAI* ai);
 
-    private:
+    protected:
         void InitCombatTriggers(std::list<TriggerNode*>& triggers) override;
         void InitCombatMultipliers(std::list<Multiplier*>& multipliers) override;
     };
