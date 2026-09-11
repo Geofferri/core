@@ -363,8 +363,6 @@ public:
 
 private:
     void UpdateAIInternal(uint32 elapsed, bool minimal = false) override;
-    std::string GetCombatRoleStance();
-    void UpdateStanceForCombatRole();
     std::unordered_map<std::string, std::list<ObjectGuid>> itemParseCache;
 
 public:
