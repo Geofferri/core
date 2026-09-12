@@ -406,7 +406,8 @@ public:
     //LM BEGIN
     std::string llmApiEndpoint, llmApiKey, llmApiJson, llmPrePrompt, llmPreRpgPrompt, llmPrompt, llmPostPrompt, llmResponseStartPattern, llmResponseEndPattern, llmResponseDeletePattern, llmResponseSplitPattern;
     uint32 llmEnabled, llmContextLength, llmBotToBotChatChance, llmGenerationTimeout, llmMaxSimultaniousGenerations, llmRpgAIChatChance;
-    bool llmGlobalContext;
+    uint32 llmControlMinInterval, llmControlMaxInterval;
+    bool llmGlobalContext, llmRequirePlayerPresence;
     ParsedUrl llmEndPointUrl;
     std::set<uint32> llmBlockedReplyChannels;
     //LM END
@@ -439,4 +440,3 @@ private:
 };
 
 #define sPlayerbotAIConfig MaNGOS::Singleton<PlayerbotAIConfig>::Instance()
-

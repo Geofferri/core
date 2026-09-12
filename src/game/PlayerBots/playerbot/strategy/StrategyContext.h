@@ -36,6 +36,7 @@
 #include "generic/TravelStrategy.h"
 #include "generic/RTSCStrategy.h"
 #include "generic/DebugStrategy.h"
+#include "generic/AIPlayStrategy.h"
 #include "generic/BattlegroundStrategy.h"
 #include "generic/LfgStrategy.h"
 #include "generic/MaintenanceStrategy.h"
@@ -157,6 +158,7 @@ namespace ai
             creators["nowar"] = [](PlayerbotAI* ai) { return new NoWarStrategy(ai); };
             creators["glyph"] = [](PlayerbotAI* ai) { return new GlyphStrategy(ai); };
             creators["ai chat"] = [](PlayerbotAI* ai) { return new AIChatStrategy(ai); };
+            creators["ai play"] = [](PlayerbotAI* ai) { return new AIPlayStrategy(ai); };
 
             // Dungeon Strategies
             creators["dungeon"] = [](PlayerbotAI* ai) { return new DungeonStrategy(ai); };

@@ -22,6 +22,11 @@ class Player;
 class PlayerbotMgr;
 class ChatHandler;
 
+namespace ai
+{
+    class AIPlayAction;
+}
+
 using namespace ai;
 
 bool IsAlliance(uint8 race);
@@ -345,6 +350,20 @@ private:
     time_t time;
 };
 
+struct AIPlayQueuedMessage
+{
+    std::string text;
+    bool playerMessage;
+    bool generationCompleted;
+    uint32 messageType;
+    ObjectGuid sender;
+    ObjectGuid receiver;
+
+    AIPlayQueuedMessage(std::string text, bool playerMessage = false, uint32 messageType = 0,
+        ObjectGuid sender = ObjectGuid(), ObjectGuid receiver = ObjectGuid(), bool generationCompleted = false) :
+        text(std::move(text)), playerMessage(playerMessage), generationCompleted(generationCompleted), messageType(messageType), sender(sender), receiver(receiver) {}
+};
+
 class PlayerbotAI : public PlayerbotAIBase
 {
 public:
@@ -372,6 +391,9 @@ public:
 	std::string HandleRemoteCommand(std::string command);
     void HandleCommand(uint32 type, const std::string& text, Player& fromPlayer, const uint32 lang = LANG_UNIVERSAL);
     void QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid guid2, std::string message, std::string chanName, std::string name, bool noDelay = false);
+    void QueueAIPlayText(std::string text, bool generationCompleted = false, ObjectGuid owner = ObjectGuid());
+    void QueueAIPlayPlayerMessage(uint32 msgType, ObjectGuid sender, ObjectGuid receiver, std::string message);
+    std::string GetAIPlayContext() const { return aiPlayContext; }
     void HandleBotOutgoingPacket(const WorldPacket& packet);
     void ProcessBotOutgoingPackets();
     bool TryMinimalMove();
@@ -597,6 +619,7 @@ public:
 
     bool HasPlayerNearby(WorldPosition pos, float range);
     bool HasPlayerNearby(float range = sPlayerbotAIConfig.reactDistance);
+    bool HasRealPlayerNearbyOrInGroup(float range = sPlayerbotAIConfig.reactDistance);
     bool HasManyPlayersNearby(uint32 trigerrValue = 20, float range = sPlayerbotAIConfig.sightDistance);
     bool ChannelHasRealPlayer(std::string channelName);
 
@@ -685,6 +708,7 @@ public:
 #endif
 
 private:
+    friend class ai::AIPlayAction;
     bool UpdateAIReaction(uint32 elapsed, bool minimal, bool isStunned);
     void UpdateFaceTarget(uint32 elapsed, bool minimal);
     void HandleBotOutgoingPacketInternal(const WorldPacket& packet);
@@ -712,6 +736,10 @@ protected:
     PlayerbotSecurity security;
     std::map<std::string, time_t> whispers;
     std::pair<ChatMsg, time_t> currentChat;
+    time_t nextAIPlayGenerationTime = 0;
+    bool aiPlayGenerationPending = false;
+    std::string aiPlayContext;
+    std::queue<AIPlayQueuedMessage> aiPlayMessages;
     static std::set<std::string> unsecuredCommands;
     bool allowActive[MAX_ACTIVITY_TYPE];
     time_t allowActiveCheckTimer[MAX_ACTIVITY_TYPE];

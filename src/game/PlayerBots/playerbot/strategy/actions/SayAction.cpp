@@ -6,8 +6,10 @@
 #include "playerbot/ServerFacade.h"
 #include "playerbot/AiFactory.h"
 #include <regex>
+#include <cctype>
 
 #include "playerbot/PlayerbotLLMInterface.h"
+#include "AIPlayAction.h"
 
 using namespace ai;
 
@@ -361,17 +363,19 @@ delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& l
         bool isEmote = line.find('*') == 0 || line.find('[') == 0;
 
         std::string sentence = line;
+        if (isEmote)
+            sentence.erase(std::remove_if(sentence.begin(), sentence.end(), [](char ch) { return ch == '*' || ch == '[' || ch == ']'; }), sentence.end());
+
+        // Some channels cannot send a separate emote packet. Preserve the generated
+        // line as ordinary chat in that case instead of silently dropping it.
+        WorldPacket outputTemplate = isEmote && !emoteTemplate.empty() ? emoteTemplate : packetTemplate;
         while (sentence.length() > 200) {
             size_t splitPos = sentence.rfind(' ', 200);
             if (splitPos == std::string::npos) {
                 splitPos = 200;
             }
 
-            sentence = std::regex_replace(sentence, std::regex("\\*"), "");
-            sentence = std::regex_replace(sentence, std::regex("\\["), "");
-            sentence = std::regex_replace(sentence, std::regex("\\]"), "");
-
-            if ((!isEmote || !emoteTemplate.empty()) && !sentence.substr(0, splitPos).empty())
+            if (!sentence.substr(0, splitPos).empty())
             {
                 auto sentenceSplit = sentence.substr(0, splitPos);
                 auto delay = sentenceSplit.size() * MsPerChar;
@@ -388,13 +392,13 @@ delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& l
                     timeDiff = 0;
                 }
 
-                LineToPacket(delayedPackets, isEmote ? emoteTemplate : packetTemplate, sentenceSplit, delay, debug);
+                LineToPacket(delayedPackets, outputTemplate, sentenceSplit, delay, debug);
             }
 
             sentence = sentence.substr(splitPos + 1);
         }
 
-        if ((!isEmote || !emoteTemplate.empty()) && !sentence.empty())
+        if (!sentence.empty())
         {
             auto delay = sentence.size() * MsPerChar;
             if (timeDiff)
@@ -411,14 +415,114 @@ delayedPackets ChatReplyAction::LinesToPackets(const std::vector<std::string>& l
                 }
                 timeDiff = 0;
             }
-            LineToPacket(delayedPackets, isEmote ? emoteTemplate : packetTemplate, sentence, delay, debug);
+            LineToPacket(delayedPackets, outputTemplate, sentence, delay, debug);
         }
     }
     return delayedPackets;
 }
 
-delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
-    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, const std::string startPattern, const std::string endPattern, const std::string deletePattern, const std::string splitPattern, bool debug)
+static std::string ExtractFallbackLLMText(const std::string& response)
+{
+    static const std::regex textField(
+        R"json("(?:text|content|response|output_text|generated_text|answer)"\s*:\s*"((?:\\.|[^"\\])*)")json", std::regex::icase);
+    std::smatch match;
+    if (std::regex_search(response, match, textField) && match.size() > 1)
+    {
+        const std::string encoded = match[1].str();
+        std::string decoded;
+        decoded.reserve(encoded.size());
+        for (size_t i = 0; i < encoded.size(); ++i)
+        {
+            if (encoded[i] != '\\' || i + 1 >= encoded.size())
+            {
+                decoded.push_back(encoded[i]);
+                continue;
+            }
+
+            char escaped = encoded[++i];
+            if (escaped == 'n' || escaped == 'r' || escaped == 't')
+                decoded.push_back(' ');
+            else if (escaped == '"' || escaped == '\\' || escaped == '/')
+                decoded.push_back(escaped);
+            else
+            {
+                decoded.push_back('\\');
+                decoded.push_back(escaped);
+            }
+        }
+        return decoded;
+    }
+
+    size_t firstText = response.find_first_not_of(" \t\r\n");
+    if (firstText != std::string::npos && response[firstText] != '{' && response[firstText] != '[' && response != "error")
+        return response.substr(firstText);
+
+    return "";
+}
+
+static bool HasDisplayableLines(const std::vector<std::string>& lines)
+{
+    for (const std::string& line : lines)
+        if (line.find_first_not_of(" \t\r\n") != std::string::npos)
+            return true;
+    return false;
+}
+
+static bool SpeakerNamesMatch(const std::string& left, const std::string& right)
+{
+    if (left.size() != right.size())
+        return false;
+
+    for (size_t i = 0; i < left.size(); ++i)
+    {
+        unsigned char leftChar = static_cast<unsigned char>(left[i]);
+        unsigned char rightChar = static_cast<unsigned char>(right[i]);
+        if (std::tolower(leftChar) != std::tolower(rightChar))
+            return false;
+    }
+
+    return true;
+}
+
+static std::string ExtractFirstSpeakerTurn(const std::string& text, const std::string& speakerName)
+{
+    if (text.empty() || speakerName.empty())
+        return text;
+
+    static const std::regex speakerLabel(R"(\b([A-Za-z][A-Za-z0-9_']*):)");
+    std::string result;
+    size_t cursor = 0;
+    for (std::sregex_iterator it(text.begin(), text.end(), speakerLabel), end; it != end; ++it)
+    {
+        size_t labelPosition = static_cast<size_t>(it->position());
+        result.append(text, cursor, labelPosition - cursor);
+
+        if (!SpeakerNamesMatch((*it)[1].str(), speakerName))
+        {
+            size_t first = result.find_first_not_of(" \t\r\n");
+            if (first == std::string::npos)
+                return "";
+
+            size_t last = result.find_last_not_of(" \t\r\n");
+            return result.substr(first, last - first + 1);
+        }
+
+        // The model may repeat the bot's name before its next line. Keep its
+        // words, but remove the speaker tag so it is never shown in game chat.
+        cursor = labelPosition + static_cast<size_t>(it->length());
+    }
+
+    result.append(text, cursor, std::string::npos);
+    size_t first = result.find_first_not_of(" \t\r\n");
+    if (first == std::string::npos)
+        return "";
+
+    size_t last = result.find_last_not_of(" \t\r\n");
+    return result.substr(first, last - first + 1);
+}
+
+delayedPackets ChatReplyAction::GenerateResponsePacketsAIPlay(const std::string json
+    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, const std::string startPattern, const std::string endPattern, const std::string deletePattern, const std::string splitPattern, ObjectGuid botGuid, ObjectGuid ownerGuid, const std::string responseSpeakerName, bool processForAIPlay, bool debug)
 {
     std::vector<std::string> debugLines;
 
@@ -432,7 +536,75 @@ delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
     auto timeAfter = time(nullptr);
     auto timeDiff = (timeAfter - startTime) * IN_MILLISECONDS;
 
-    std::vector<std::string> lines = PlayerbotLLMInterface::ParseResponse(response, startPattern, endPattern, deletePattern, splitPattern, debugLines);
+    std::string fallbackText = ExtractFallbackLLMText(response);
+    size_t responseStart = response.find_first_not_of(" \t\r\n");
+    bool structuredResponse = responseStart != std::string::npos &&
+        (response[responseStart] == '{' || response[responseStart] == '[');
+
+    std::vector<std::string> lines;
+    if (structuredResponse && !fallbackText.empty())
+    {
+        lines = PlayerbotLLMInterface::ParseResponse(fallbackText, "", "", deletePattern, splitPattern, debugLines);
+        if (debug)
+            debugLines.push_back("Extracted the generated reply from the LLM JSON response.");
+    }
+    else
+        lines = PlayerbotLLMInterface::ParseResponse(response, startPattern, endPattern, deletePattern, splitPattern, debugLines);
+
+    if (!HasDisplayableLines(lines) && !fallbackText.empty())
+    {
+        lines = PlayerbotLLMInterface::ParseResponse(fallbackText, "", "", deletePattern, splitPattern, debugLines);
+        if (debug)
+            debugLines.push_back("Used fallback text extraction for the LLM reply.");
+    }
+
+    lines.erase(std::remove_if(lines.begin(), lines.end(), [](const std::string& line)
+    {
+        return line.find_first_not_of(" \t\r\n") == std::string::npos;
+    }), lines.end());
+    if (lines.empty() && !fallbackText.empty())
+        lines.push_back(fallbackText);
+
+    // LLMs often continue the chat transcript with lines attributed to the
+    // player or another character. Only retain the first turn spoken by the
+    // intended speaker, and remove repeated labels for that speaker.
+    if (!responseSpeakerName.empty() && !lines.empty())
+    {
+        std::string combinedText;
+        for (const std::string& line : lines)
+        {
+            if (!combinedText.empty())
+                combinedText += " ";
+            combinedText += line;
+        }
+
+        combinedText = ExtractFirstSpeakerTurn(combinedText, responseSpeakerName);
+        std::vector<std::string> parseDebugLines;
+        lines = combinedText.empty()
+            ? std::vector<std::string>()
+            : PlayerbotLLMInterface::ParseResponse(combinedText, "", "", "", splitPattern, parseDebugLines);
+        lines.erase(std::remove_if(lines.begin(), lines.end(), [](const std::string& line)
+        {
+            return line.find_first_not_of(" \t\r\n") == std::string::npos;
+        }), lines.end());
+    }
+
+    if (lines.empty() && debug && !response.empty())
+        debugLines.push_back("No displayable chat text could be extracted from the LLM response.");
+
+    if (processForAIPlay && !response.empty())
+    {
+        std::string responseText;
+        for (const std::string& line : lines)
+        {
+            if (!responseText.empty())
+                responseText += " ";
+            responseText += line;
+        }
+        if (responseText.empty())
+            responseText = response;
+        AIPlayAction::QueueGeneratedResponse(botGuid, ownerGuid, responseText);
+    }
 
     delayedPackets packets, debugPackets;
 
@@ -447,8 +619,20 @@ delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
     return packets;
 }
 
+delayedPackets ChatReplyAction::GenerateResponsePackets(const std::string json
+    , const WorldPacket chatTemplate, const WorldPacket emoteTemplate, const WorldPacket systemTemplate, const std::string startPattern, const std::string endPattern, const std::string deletePattern, const std::string splitPattern, bool debug)
+{
+    return GenerateResponsePacketsAIPlay(json, chatTemplate, emoteTemplate, systemTemplate, startPattern,
+        endPattern, deletePattern, splitPattern, ObjectGuid(), ObjectGuid(), "", false, debug);
+}
+
 void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32 guid2, std::string msg, std::string chanName, std::string name)
 {
+    PlayerbotAI* botAI = bot ? bot->GetPlayerbotAI() : nullptr;
+    if (botAI && botAI->HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT))
+        AIPlayAction::ProcessPlayerMessage(botAI, type,
+            ObjectGuid(HIGHGUID_PLAYER, guid1), ObjectGuid(HIGHGUID_PLAYER, guid2), msg);
+
     // if we're just commanding bots around, don't respond...
     // first one is for exact word matches
     if (noReplyMsgs.find(msg) != noReplyMsgs.end())
@@ -508,7 +692,7 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
         return;
     }
 
-    if (bot->GetPlayerbotAI() && sPlayerbotAIConfig.llmEnabled > 0 && (bot->GetPlayerbotAI()->HasStrategy("ai chat", BotState::BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.llmEnabled == 3) && chatChannelSource != ChatChannelSource::SRC_UNDEFINED && sPlayerbotAIConfig.llmBlockedReplyChannels.find(chatChannelSource) == sPlayerbotAIConfig.llmBlockedReplyChannels.end()
+    if (bot->GetPlayerbotAI() && sPlayerbotAIConfig.llmEnabled > 0 && (bot->GetPlayerbotAI()->HasStrategy("ai chat", BotState::BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.llmEnabled == 3) && (!sPlayerbotAIConfig.llmRequirePlayerPresence || bot->GetPlayerbotAI()->HasRealPlayerNearbyOrInGroup()) && chatChannelSource != ChatChannelSource::SRC_UNDEFINED && sPlayerbotAIConfig.llmBlockedReplyChannels.find(chatChannelSource) == sPlayerbotAIConfig.llmBlockedReplyChannels.end()
         )
     {
         Player* player = sObjectAccessor.FindPlayer(ObjectGuid(HIGHGUID_PLAYER, guid1));
@@ -649,7 +833,8 @@ void ChatReplyAction::ChatReplyDo(Player* bot, uint32 type, uint32 guid1, uint32
                 WorldPacket emoteTemplate = (type == CHAT_MSG_SAY || type == CHAT_MSG_WHISPER) ? GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_EMOTE, bot, player) : WorldPacket();
                 WorldPacket systemTemplate = GetPacketTemplate(CMSG_MESSAGECHAT, CHAT_MSG_WHISPER, bot, player);
 
-                futurePackets futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePackets, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, debug);
+                bool processForAIPlay = botAI && botAI->HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT);
+                futurePackets futPackets = std::async(std::launch::async, ChatReplyAction::GenerateResponsePacketsAIPlay, json, chatTemplate, emoteTemplate, systemTemplate, startPattern, endPattern, deletePattern, splitPattern, bot->GetObjectGuid(), ObjectGuid(HIGHGUID_PLAYER, guid1), bot->GetName(), processForAIPlay, debug);
 
                 ai->SendDelayedPacket(session, std::move(futPackets));
             }

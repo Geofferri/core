@@ -20,6 +20,8 @@
 #include <sstream>
 #include "PlayerbotLoginMgr.h"
 
+#include <algorithm>
+
 // Searches the config file for all keys containing the given substring.
 // Returns the matching key names (preserving original case from the file).
 static std::vector<std::string> GetConfigValues(Config const& cfg, const std::string& name)
@@ -706,6 +708,11 @@ bool PlayerbotAIConfig::Initialize()
     llmGlobalContext = config.GetBoolDefault("AiPlayerbot.LLMGlobalContext", false);
     llmBotToBotChatChance = config.GetIntDefault("AiPlayerbot.LLMBotToBotChatChance", 0);
     llmRpgAIChatChance = config.GetIntDefault("AiPlayerbot.LLMRpgAIChatChance", 100);
+    llmRequirePlayerPresence = config.GetBoolDefault("AiPlayerbot.LLMRequirePlayerPresence", true);
+    llmControlMinInterval = config.GetIntDefault("AiPlayerbot.LLMControlMinInterval", 120);
+    llmControlMaxInterval = config.GetIntDefault("AiPlayerbot.LLMControlMaxInterval", 300);
+    if (llmControlMaxInterval < llmControlMinInterval)
+        std::swap(llmControlMaxInterval, llmControlMinInterval);
 
     std::list<std::string> blockedChannels;
     LoadListString<std::list<std::string>>(config.GetStringDefault("AiPlayerbot.LLMBlockedReplyChannels", ""), blockedChannels);

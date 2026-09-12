@@ -41,7 +41,8 @@ file(GLOB Playerbot_Strategy ${CMAKE_CURRENT_SOURCE_DIR}/playerbot/strategy/*.cp
     source_group("Player Bot\\Strategies" FILES ${Playerbot_Strategy})
     LIST(APPEND LIBRARY_SRCS ${Playerbot_Strategy})
 
-#Action files
+# Action files are globbed at configure time. Keep this CMake file updated when adding
+# action sources so existing CMake/Visual Studio builds reconfigure and pick them up.
 file(GLOB Playerbot_Actions ${CMAKE_CURRENT_SOURCE_DIR}/playerbot/strategy/actions/*.cpp ${CMAKE_CURRENT_SOURCE_DIR}/playerbot/strategy/actions/*.h)
     source_group("Player Bot\\Strategies\\Actions" FILES ${Playerbot_Actions})
     LIST(APPEND LIBRARY_SRCS ${Playerbot_Actions})

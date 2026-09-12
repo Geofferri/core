@@ -19,6 +19,7 @@
 #include "strategy/values/LastMovementValue.h"
 #include "strategy/actions/LogLevelAction.h"
 #include "strategy/actions/SayAction.h"
+#include "strategy/actions/AIPlayAction.h"
 #include "strategy/actions/EmoteAction.h"
 #include "strategy/values/LastSpellCastValue.h"
 #include "LootObjectStack.h"
@@ -1207,6 +1208,38 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
 
     ExternalEventHelper helper(aiObjectContext);
 
+    // AI-play text is queued from LLM worker threads and executed here, on the bot update thread.
+    std::queue<AIPlayQueuedMessage> pendingAIPlayMessages;
+
+    {
+        std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+        pendingAIPlayMessages.swap(aiPlayMessages);
+    }
+
+    while (!pendingAIPlayMessages.empty())
+    {
+        AIPlayQueuedMessage holder = pendingAIPlayMessages.front();
+        pendingAIPlayMessages.pop();
+
+        if (holder.generationCompleted)
+            aiPlayGenerationPending = false;
+
+        if (holder.text.empty())
+            continue;
+
+        if (sPlayerbotAIConfig.llmEnabled == 0 || !HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT))
+            continue;
+
+        if (sPlayerbotAIConfig.llmRequirePlayerPresence && !HasRealPlayerNearbyOrInGroup())
+            continue;
+
+        if (holder.playerMessage)
+            AIPlayAction::ProcessPlayerMessage(this, holder.messageType, holder.sender, holder.receiver, holder.text);
+        else
+            AIPlayAction::ProcessGeneratedText(this, holder.text, true,
+                holder.sender.IsEmpty() ? nullptr : sObjectAccessor.FindPlayer(holder.sender));
+    }
+
     // chat replies
     std::queue<ChatQueuedReply> pendingReplies;
 
@@ -1240,6 +1273,18 @@ void PlayerbotAI::UpdateAIInternal(uint32 elapsed, bool minimal)
         for (std::list<ChatQueuedReply>::iterator i = delayedResponses.begin(); i != delayedResponses.end(); ++i)
         {
             chatReplies.push(*i);
+        }
+    }
+
+    // The normal playerbot strategies remain responsible for low-level decisions. AI-play
+    // periodically asks the LLM for one high-level intention when a real player is present.
+    if (HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT))
+    {
+        Action* aiPlayAction = aiObjectContext->GetAction("ai play");
+        if (aiPlayAction && aiPlayAction->isUseful())
+        {
+            Event event("ai play");
+            aiPlayAction->Execute(event);
         }
     }
 
@@ -1926,12 +1971,18 @@ void PlayerbotAI::HandleBotOutgoingPacketInternal(const WorldPacket& packet)
 #endif
 
             bool isAiChat = sPlayerbotAIConfig.llmEnabled > 0 && (HasStrategy("ai chat", BotState::BOT_STATE_NON_COMBAT) || sPlayerbotAIConfig.llmEnabled == 3);
+            bool isAiPlay = sPlayerbotAIConfig.llmEnabled > 0 && HasStrategy("ai play", BotState::BOT_STATE_NON_COMBAT);
 
             if (isAiChat && (lang == LANG_ADDON || message.find("d:") == 0))
                 return;
 
             if (guid1 != bot->GetObjectGuid()) // do not reply to self
             {
+                // When AI-chat is disabled, still let AI-play interpret directly addressed
+                // messages. The normal AI update thread validates the sender and player gate.
+                if (isAiPlay && !isAiChat && lang != LANG_ADDON && message.find("d:") != 0)
+                    QueueAIPlayPlayerMessage(msgtype, guid1, guid2, message);
+
                 // try to always reply to real player
                 time_t lastChat = GetAiObjectContext()->GetValue<time_t>("last said", "chat")->Get();
                 bool isPaused = time(0) < lastChat;
@@ -6076,6 +6127,51 @@ bool PlayerbotAI::HasPlayerNearby(float range)
     return HasPlayerNearby(bot, range);
 }
 
+bool PlayerbotAI::HasRealPlayerNearbyOrInGroup(float range)
+{
+    Group* group = bot->GetGroup();
+    if (group)
+    {
+        for (GroupReference* ref = group->GetFirstMember(); ref; ref = ref->next())
+        {
+            Player* member = ref->getSource();
+            if (member && member != bot && member->IsInWorld() && IsRealPlayer(member))
+                return true;
+        }
+    }
+
+    if (range <= 0.0f)
+        range = sPlayerbotAIConfig.reactDistance;
+
+    const float squaredRange = range * range;
+    const uint32 mapId = bot->GetMapId();
+    const uint32 instanceId = bot->GetInstanceId();
+    const WorldPosition botPosition(bot);
+
+    for (auto const& entry : sRandomPlayerbotMgr.GetPlayersSnapshot())
+    {
+        Player* player = entry.second;
+        if (!player || !player->IsInWorld() || !IsRealPlayer(player))
+            continue;
+
+        if (player->IsGameMaster() && player->HasFlag(PLAYER_FLAGS, PLAYER_FLAGS_GM))
+            continue;
+
+        if (player->GetMapId() != mapId || player->GetInstanceId() != instanceId)
+            continue;
+
+        if (botPosition.sqDistance(WorldPosition(player)) < squaredRange)
+            return true;
+
+        WorldObject* viewObject = player->GetCamera().GetBody();
+        if (viewObject && viewObject != player && viewObject->GetMapId() == mapId &&
+            viewObject->GetInstanceId() == instanceId && botPosition.sqDistance(WorldPosition(viewObject)) < squaredRange)
+            return true;
+    }
+
+    return false;
+}
+
 bool PlayerbotAI::HasManyPlayersNearby(uint32 trigerrValue, float range)
 {
     float sqRange = range * range;
@@ -8008,11 +8104,10 @@ void PlayerbotAI::SendDelayedPacket(WorldSession* session, futurePackets futPack
     if (!session || !session->GetPlayer())
         return;
 
-    uint32 accountId = session->GetAccountId();
     ObjectGuid playerGuid = session->GetPlayer()->GetObjectGuid();
 
     std::thread t(
-        [accountId, playerGuid, futPacket = std::move(futPackets)]() mutable
+        [playerGuid, futPacket = std::move(futPackets)]() mutable
         {
             for (auto& delayedPacket : futPacket.get())
             {
@@ -8022,26 +8117,83 @@ void PlayerbotAI::SendDelayedPacket(WorldSession* session, futurePackets futPack
                 WorldPacket wp(delayedPacket.first);
 
                 sWorld.GetMessager().AddMessage(
-                    [accountId, playerGuid, wp = std::move(wp)](World* world) mutable
+                    [playerGuid, wp = std::move(wp)](World*) mutable
                     {
-                        WorldSession* currentSession = world->FindSession(accountId);
+                        // Playerbot sessions may share an account id or may not be
+                        // registered in World::FindSession. Resolve the bot by its
+                        // character guid instead of looking up whichever session owns
+                        // the account id.
+                        Player* currentPlayer = sObjectAccessor.FindPlayer(playerGuid);
+                        if (!currentPlayer || !currentPlayer->IsInWorld())
+                            return;
+
+                        WorldSession* currentSession = currentPlayer->GetSession();
                         if (!currentSession)
-                            return;
-
-                        Player* currentPlayer = currentSession->GetPlayer();
-                        if (!currentPlayer)
-                            return;
-
-                        if (currentPlayer->GetObjectGuid() != playerGuid)
-                            return;
-
-                        if (!currentPlayer->IsInWorld())
                             return;
 
                         WorldPackets::Chat::ChatMessage chatMsg;
                         chatMsg.ReadFromWorldPacket(wp);
 
-                        currentSession->HandleChatMessageOpcode(chatMsg);
+                        // These packets represent speech generated for the bot. Feeding
+                        // them back through the client opcode handler can route whispers
+                        // and guild messages through the session's MasterPlayer instead
+                        // of the bot. Dispatch the generated speech as the bot directly.
+                        PlayerbotAI* currentAI = currentPlayer->GetPlayerbotAI();
+                        if (!currentAI)
+                        {
+                            currentSession->HandleChatMessageOpcode(chatMsg);
+                            return;
+                        }
+
+                        switch (chatMsg.type)
+                        {
+                        case CHAT_MSG_SAY:
+                            currentPlayer->Say(chatMsg.message.c_str(), chatMsg.lang);
+                            break;
+                        case CHAT_MSG_YELL:
+                            currentPlayer->Yell(chatMsg.message.c_str(), chatMsg.lang);
+                            break;
+                        case CHAT_MSG_EMOTE:
+                            currentPlayer->TextEmote(chatMsg.message.c_str());
+                            break;
+                        case CHAT_MSG_WHISPER:
+                            currentAI->Whisper(chatMsg.message, chatMsg.whisperTargetOrChannel, true);
+                            break;
+                        case CHAT_MSG_PARTY:
+                        {
+                            Group* group = currentPlayer->GetGroup();
+                            if (group)
+                            {
+                                WorldPacket data;
+                                ChatHandler::BuildChatPacket(data, CHAT_MSG_PARTY, chatMsg.message.c_str(),
+                                    Language(chatMsg.lang), currentPlayer->GetChatTag(),
+                                    currentPlayer->GetObjectGuid(), currentPlayer->GetName());
+                                group->BroadcastPacket(&data, false);
+                            }
+                            break;
+                        }
+                        case CHAT_MSG_RAID:
+                            currentAI->SayToRaid(chatMsg.message);
+                            break;
+                        case CHAT_MSG_GUILD:
+                            currentAI->SayToGuild(chatMsg.message);
+                            break;
+                        case CHAT_MSG_CHANNEL:
+                        {
+                            ChannelMgr* channelManager = channelMgr(currentPlayer->GetTeam());
+                            if (channelManager)
+                            {
+                                Channel* channel = channelManager->GetChannel(chatMsg.whisperTargetOrChannel,
+                                    currentSession->GetPlayerPointer());
+                                if (channel)
+                                    channel->Say(currentPlayer->GetObjectGuid(), chatMsg.message.c_str(), chatMsg.lang);
+                            }
+                            break;
+                        }
+                        default:
+                            currentSession->HandleChatMessageOpcode(chatMsg);
+                            break;
+                        }
                     });
             }
         });
@@ -8711,6 +8863,24 @@ void PlayerbotAI::QueueChatResponse(uint32 msgType, ObjectGuid guid1, ObjectGuid
 
     std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
     chatReplies.push(reply);
+}
+
+void PlayerbotAI::QueueAIPlayText(std::string text, bool generationCompleted, ObjectGuid owner)
+{
+    if (text.empty() && !generationCompleted)
+        return;
+
+    std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+    aiPlayMessages.emplace(std::move(text), false, 0, owner, ObjectGuid(), generationCompleted);
+}
+
+void PlayerbotAI::QueueAIPlayPlayerMessage(uint32 msgType, ObjectGuid sender, ObjectGuid receiver, std::string message)
+{
+    if (message.empty())
+        return;
+
+    std::lock_guard<std::mutex> lock(m_chatQueuesMutex);
+    aiPlayMessages.emplace(std::move(message), true, msgType, sender, receiver);
 }
 
 bool PlayerbotAI::PlayAttackEmote(float chanceMultiplier)

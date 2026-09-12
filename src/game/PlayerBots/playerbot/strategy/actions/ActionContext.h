@@ -73,6 +73,7 @@
 #include "RangeAction.h"
 #include "UseConsumableAction.h"
 #include "WorldBuffTravelActions.h"
+#include "AIPlayAction.h"
 
 #include "OnyxiasLairDungeonActions.h"
 #include "MoltenCoreDungeonActions.h"
@@ -87,6 +88,10 @@ namespace ai
     public:
         ActionContext()
         {
+            creators["ai play"] = [](PlayerbotAI* ai) { return new AIPlayAction(ai); };
+            creators["ai play move random"] = [](PlayerbotAI* ai) { return new AIPlayMoveRandomAction(ai); };
+            creators["ai play stop attack"] = [](PlayerbotAI* ai) { return new AIPlayStopAttackAction(ai); };
+            creators["ai play move to requester"] = [](PlayerbotAI* ai) { return new AIPlayMoveToRequesterAction(ai); };
             creators["mark rti"] = [](PlayerbotAI* ai) { return new MarkRtiAction(ai); };
             creators["set return position"] = [](PlayerbotAI* ai) { return new SetReturnPositionAction(ai); };
             creators["rpg"] = [](PlayerbotAI* ai) { return new RpgAction(ai); };

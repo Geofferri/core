@@ -1103,6 +1103,12 @@ AiPlayerbot.LLMDefaultPromptsFile = llm_character_card.txt
 # Channels that bots are not allowed to use ai-chat to reply on. Channels: guild,world,general,trade,lfg,ldefence,wdefence,grecruitement,say,whisper,emote,temote,yell,party,raid
 # AiPlayerbot.LLMBlockedReplyChannels = 
 
+# Require a real player to be near the bot or in its group before ai-chat or ai-play can generate text.
+# AiPlayerbot.LLMRequirePlayerPresence = 1
+# Autonomous ai-play generation interval, in seconds. A random interval is chosen after each request.
+# AiPlayerbot.LLMControlMinInterval = 30
+# AiPlayerbot.LLMControlMaxInterval = 60
+
 # OPEN-AI (chat completions) example:
 # AiPlayerbot.LLMApiEndpoint = http://IP/URL:PORT/v1/chat/completions
 # AiPlayerbot.LLMApiKey = YOUR_API_KEY
