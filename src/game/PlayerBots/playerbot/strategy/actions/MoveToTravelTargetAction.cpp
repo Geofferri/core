@@ -259,12 +259,8 @@ bool MoveToTravelTargetAction::isUseful()
         }
     }
 
-    if (bot->GetGroup() && !bot->GetGroup()->IsLeader(bot->GetObjectGuid()))
-        if (ai->HasStrategy("follow", BotState::BOT_STATE_NON_COMBAT) ||
-            ai->HasStrategy("stay", BotState::BOT_STATE_NON_COMBAT) ||
-            ai->HasStrategy("guard", BotState::BOT_STATE_NON_COMBAT))
-            if (!travelTarget->IsForced())
-                return false;
+    if (bot->GetGroup() && !ai->IsGroupLeader() && !travelTarget->IsForced())
+        return false;
 
     WorldPosition travelPos(*travelTarget->GetPosition());
 
